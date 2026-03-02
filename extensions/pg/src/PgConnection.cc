@@ -119,6 +119,7 @@ Task<std::unique_ptr<PgResult>> PgConnection::sendAndReceive(std::string_view sq
 
     for (auto & v : params)
     {
+        paramFormats.push_back(0);
         std::visit(
             [&](auto && arg) {
                 using T = std::decay_t<decltype(arg)>;
@@ -150,14 +151,14 @@ Task<std::unique_ptr<PgResult>> PgConnection::sendAndReceive(std::string_view sq
                     paramValues.push_back(arg.c_str());
                     paramLengths.push_back(static_cast<int>(arg.size()));
                 }
-                else if constexpr (std::is_same_v<T, std::vector<uint8_t>>)
+                else
                 {
                     // bytea: send as binary
+                    static_assert(std::is_same_v<T, std::vector<uint8_t>>);
                     paramValues.push_back(reinterpret_cast<const char *>(arg.data()));
                     paramLengths.push_back(static_cast<int>(arg.size()));
                     paramFormats.back() = 1; // binary
                 }
-                paramFormats.push_back(0);
             },
             v);
     }
