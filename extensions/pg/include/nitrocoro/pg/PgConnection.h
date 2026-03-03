@@ -32,14 +32,15 @@ public:
 
     PgConnection(const PgConnection &) = delete;
     PgConnection & operator=(const PgConnection &) = delete;
+    PgConnection(PgConnection &&) noexcept = default;
+    PgConnection & operator=(PgConnection &&) noexcept = default;
     ~PgConnection();
+
+    Scheduler * scheduler() const { return channel_->scheduler(); }
+    bool isAlive() const;
 
     Task<PgResult> query(std::string_view sql, std::vector<PgValue> params = {});
     Task<> execute(std::string_view sql, std::vector<PgValue> params = {});
-    Task<> begin();
-    Task<> commit();
-    Task<> rollback();
-    bool isAlive() const;
 
 private:
     PgConnection(std::shared_ptr<PGconn> conn, std::unique_ptr<IoChannel> channel);

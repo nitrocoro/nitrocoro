@@ -133,8 +133,7 @@ Task<PooledConnection> PgPool::acquire()
 Task<PgTransaction> PgPool::newTransaction()
 {
     auto conn = co_await acquire();
-    co_await conn->begin();
-    co_return PgTransaction(std::move(conn), state_->scheduler);
+    co_return co_await PgTransaction::begin(std::move(conn));
 }
 
 // PooledConnection implementation

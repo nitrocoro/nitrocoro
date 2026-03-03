@@ -49,6 +49,8 @@ NITRO_TEST(transaction_commit)
         auto tx = co_await pool.newTransaction();
         co_await tx.execute("INSERT INTO tx_commit_test VALUES (42)");
         co_await tx.commit();
+        // Test: cannot execute after commit
+        NITRO_CHECK_THROWS_AS(co_await tx.execute("INSERT INTO tx_commit_test VALUES (99)"), std::logic_error);
     }
     auto conn = co_await pool.acquire();
     auto result = co_await conn->query("SELECT v FROM tx_commit_test");
@@ -166,6 +168,26 @@ NITRO_TEST(transaction_move_assignment)
         auto conn = co_await pool.acquire();
         co_await conn->execute("DROP TABLE tx_assign_test");
     }
+}
+
+NITRO_TEST(transaction_from_connection)
+{
+    auto conn = co_await PgConnection::connect(connStr());
+    co_await conn->execute("DROP TABLE IF EXISTS tx_conn_test");
+    co_await conn->execute("CREATE TABLE tx_conn_test (v INT)");
+
+    {
+        auto tx = co_await PgTransaction::begin(std::move(*conn));
+        co_await tx.execute("INSERT INTO tx_conn_test VALUES (100)");
+        co_await tx.commit();
+    }
+
+    auto conn2 = co_await PgConnection::connect(connStr());
+    auto result = co_await conn2->query("SELECT v FROM tx_conn_test");
+    NITRO_CHECK_EQ(result.rowCount(), 1);
+    NITRO_CHECK_EQ(std::get<int64_t>(result.get(0, 0)), 100);
+
+    co_await conn2->execute("DROP TABLE tx_conn_test");
 }
 
 int main()

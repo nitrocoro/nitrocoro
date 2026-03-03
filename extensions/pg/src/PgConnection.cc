@@ -19,8 +19,6 @@ PgConnection::PgConnection(std::shared_ptr<PGconn> conn, std::unique_ptr<IoChann
 
 PgConnection::~PgConnection()
 {
-    // channel_->cancelAll();
-    channel_->disableAll();
 }
 
 Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, Scheduler * scheduler)
@@ -34,6 +32,7 @@ Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, S
 
     co_await scheduler->switch_to();
     auto channel = std::make_unique<IoChannel>(PQsocket(pgConn.get()), TriggerMode::LevelTriggered, scheduler);
+    channel->setGuard(pgConn);
     channel->enableReading();
 
     auto connectResult = co_await channel->perform([&pgConn](int, IoChannel * ch) -> IoChannel::IoStatus {
@@ -213,21 +212,6 @@ Task<PgResult> PgConnection::query(std::string_view sql, std::vector<PgValue> pa
 Task<> PgConnection::execute(std::string_view sql, std::vector<PgValue> params)
 {
     co_await sendAndReceive(sql, std::move(params));
-}
-
-Task<> PgConnection::begin()
-{
-    co_await execute("BEGIN");
-}
-
-Task<> PgConnection::commit()
-{
-    co_await execute("COMMIT");
-}
-
-Task<> PgConnection::rollback()
-{
-    co_await execute("ROLLBACK");
 }
 
 } // namespace nitrocoro::pg

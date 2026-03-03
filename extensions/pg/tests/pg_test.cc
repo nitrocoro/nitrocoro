@@ -122,15 +122,15 @@ NITRO_TEST(transaction_basic)
     auto conn = co_await PgConnection::connect(connStr());
     co_await conn->execute("CREATE TEMP TABLE tx_test (v INT)");
 
-    co_await conn->begin();
+    co_await conn->execute("BEGIN");
     co_await conn->execute("INSERT INTO tx_test VALUES (42)");
-    co_await conn->rollback();
+    co_await conn->execute("ROLLBACK");
     auto result = co_await conn->query("SELECT COUNT(*) FROM tx_test");
     NITRO_CHECK(std::get<int64_t>(result.get(0, 0)) == 0);
 
-    co_await conn->begin();
+    co_await conn->execute("BEGIN");
     co_await conn->execute("INSERT INTO tx_test VALUES (99)");
-    co_await conn->commit();
+    co_await conn->execute("COMMIT");
     result = co_await conn->query("SELECT v FROM tx_test");
     NITRO_CHECK(std::get<int64_t>(result.get(0, 0)) == 99);
 }

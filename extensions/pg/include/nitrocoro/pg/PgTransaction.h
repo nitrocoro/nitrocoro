@@ -3,11 +3,13 @@
  * @brief RAII PostgreSQL transaction with automatic rollback on destruction
  */
 #pragma once
+#include "nitrocoro/pg/PgConnection.h"
+#include "nitrocoro/pg/PgPool.h"
 #include "nitrocoro/pg/PgResult.h"
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
-#include <nitrocoro/pg/PgPool.h>
 
+#include <memory>
 #include <string_view>
 #include <vector>
 
@@ -20,7 +22,10 @@ using nitrocoro::Task;
 class PgTransaction
 {
 public:
-    PgTransaction(PooledConnection conn, Scheduler * scheduler);
+    // Static factory methods
+    static Task<PgTransaction> begin(PooledConnection && conn);
+    static Task<PgTransaction> begin(PgConnection && conn);
+
     ~PgTransaction();
 
     PgTransaction(const PgTransaction &) = delete;
@@ -34,7 +39,12 @@ public:
     Task<> rollback();
 
 private:
-    PooledConnection conn_;
+    PgTransaction(PooledConnection conn, Scheduler * scheduler);
+    PgTransaction(PgConnection conn, Scheduler * scheduler);
+
+    PgConnection * conn_{ nullptr };
+    PooledConnection pooledConn_;
+    std::unique_ptr<PgConnection> ownedConn_;
     Scheduler * scheduler_{ nullptr };
     bool done_{ false };
 };
