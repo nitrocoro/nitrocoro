@@ -25,7 +25,7 @@ using nitrocoro::io::IoChannel;
 class PgConnection
 {
 public:
-    static Task<std::shared_ptr<PgConnection>> connect(std::string connStr,
+    static Task<std::unique_ptr<PgConnection>> connect(std::string connStr,
                                                        Scheduler * scheduler = Scheduler::current());
 
     PgConnection(const PgConnection &) = delete;

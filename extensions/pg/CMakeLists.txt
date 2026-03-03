@@ -17,3 +17,4 @@ target_link_libraries(nitrocoro-pg PUBLIC
 
 add_executable(pg_test tests/pg_test.cc)
 target_link_libraries(pg_test PRIVATE nitrocoro-pg)
+add_test(NAME pg_test COMMAND pg_test)

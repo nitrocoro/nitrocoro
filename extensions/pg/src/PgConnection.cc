@@ -62,7 +62,7 @@ PgConnection::~PgConnection()
     channel_->disableAll();
 }
 
-Task<std::shared_ptr<PgConnection>> PgConnection::connect(std::string connStr, Scheduler * scheduler)
+Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, Scheduler * scheduler)
 {
     auto pgConn = std::shared_ptr<PGconn>(PQconnectStart(connStr.c_str()), PQfinish);
     if (!pgConn)
@@ -97,7 +97,7 @@ Task<std::shared_ptr<PgConnection>> PgConnection::connect(std::string connStr, S
     NITRO_TRACE("PgConnection: connected (fd=%d)\n", PQsocket(pgConn.get()));
     if (PQsetnonblocking(pgConn.get(), 1) != 0)
         throw std::runtime_error("PQsetnonblocking: " + std::string(PQerrorMessage(pgConn.get())));
-    co_return std::shared_ptr<PgConnection>(new PgConnection(std::move(pgConn), std::move(channel)));
+    co_return std::unique_ptr<PgConnection>(new PgConnection(std::move(pgConn), std::move(channel)));
 }
 
 bool PgConnection::isAlive() const
