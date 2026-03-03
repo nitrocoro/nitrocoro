@@ -2,7 +2,8 @@
  * @file PgPool.cc
  * @brief PgPool implementation
  */
-#include <nitrocoro/pg/PgTransaction.h>
+#include "nitrocoro/pg/PgPool.h"
+#include "nitrocoro/pg/PgTransaction.h"
 #include <nitrocoro/utils/Debug.h>
 
 namespace nitrocoro::pg

@@ -2,7 +2,7 @@
  * @file PgTransaction.cc
  * @brief PgTransaction implementation
  */
-#include <nitrocoro/pg/PgTransaction.h>
+#include "nitrocoro/pg/PgTransaction.h"
 #include <nitrocoro/utils/Debug.h>
 
 namespace nitrocoro::pg

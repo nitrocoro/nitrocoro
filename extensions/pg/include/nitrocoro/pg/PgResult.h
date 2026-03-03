@@ -4,12 +4,13 @@
  */
 #pragma once
 
+#include <memory>
 #include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
 
-#include <libpq-fe.h>
+struct PGresult;
 
 namespace nitrocoro::pg
 {
@@ -19,25 +20,19 @@ using PgValue = std::variant<std::monostate, bool, int64_t, double, std::string,
 class PgResult
 {
 public:
-    explicit PgResult(PGresult * res)
-        : res_(res) {}
-    ~PgResult()
-    {
-        if (res_)
-            PQclear(res_);
-    }
+    PgResult() = default;
+    explicit PgResult(std::shared_ptr<PGresult> res);
 
-    PgResult(const PgResult &) = delete;
-    PgResult & operator=(const PgResult &) = delete;
-
-    size_t rowCount() const { return static_cast<size_t>(PQntuples(res_)); }
-    size_t colCount() const { return static_cast<size_t>(PQnfields(res_)); }
-    std::string_view colName(size_t col) const { return PQfname(res_, static_cast<int>(col)); }
+    size_t rowCount() const { return rows_; }
+    size_t colCount() const { return cols_; }
+    const char * colName(size_t col) const;
 
     PgValue get(size_t row, size_t col) const;
 
 private:
-    PGresult * res_;
+    std::shared_ptr<PGresult> res_;
+    size_t rows_ = 0;
+    size_t cols_ = 0;
 };
 
 } // namespace nitrocoro::pg

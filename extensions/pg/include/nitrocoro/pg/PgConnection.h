@@ -4,16 +4,17 @@
  */
 #pragma once
 
+#include "nitrocoro/pg/PgResult.h"
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/IoChannel.h>
-#include <nitrocoro/pg/PgResult.h>
 
-#include <libpq-fe.h>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
+
+struct PGconn;
 
 namespace nitrocoro::pg
 {
@@ -32,7 +33,7 @@ public:
     PgConnection & operator=(const PgConnection &) = delete;
     ~PgConnection();
 
-    Task<std::unique_ptr<PgResult>> query(std::string_view sql, std::vector<PgValue> params = {});
+    Task<PgResult> query(std::string_view sql, std::vector<PgValue> params = {});
     Task<> execute(std::string_view sql, std::vector<PgValue> params = {});
     Task<> begin();
     Task<> commit();
@@ -42,7 +43,7 @@ public:
 private:
     PgConnection(std::shared_ptr<PGconn> conn, std::unique_ptr<IoChannel> channel);
 
-    Task<std::unique_ptr<PgResult>> sendAndReceive(std::string_view sql, std::vector<PgValue> params);
+    Task<PgResult> sendAndReceive(std::string_view sql, std::vector<PgValue> params);
 
     std::shared_ptr<PGconn> pgConn_;
     std::unique_ptr<IoChannel> channel_;
