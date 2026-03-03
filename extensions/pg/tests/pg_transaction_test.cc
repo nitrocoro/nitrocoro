@@ -77,6 +77,8 @@ NITRO_TEST(transaction_query)
         auto tx = co_await pool.newTransaction();
         co_await tx.execute("INSERT INTO tx_query_test VALUES (1), (2), (3)");
         auto result = co_await tx.query("SELECT SUM(v) FROM tx_query_test");
+        NITRO_CHECK_EQ(result.rowCount(), 1);
+        NITRO_CHECK_EQ(result.colCount(), 1);
         NITRO_CHECK_EQ(std::get<int64_t>(result.get(0, 0)), 6);
         co_await tx.commit();
     }
@@ -99,16 +101,71 @@ NITRO_TEST(transaction_move)
     PgPool pool(1, makeConn);
     co_await (co_await pool.acquire())->execute("CREATE TEMP TABLE tx_move_test (v INT)");
 
-    auto tx1 = co_await pool.newTransaction();
-    co_await tx1.execute("INSERT INTO tx_move_test VALUES (10)");
+    {
+        auto tx1 = co_await pool.newTransaction();
+        NITRO_CHECK_EQ(pool.idleCount(), 0);
+        co_await tx1.execute("INSERT INTO tx_move_test VALUES (10)");
 
-    auto tx2 = std::move(tx1);
-    co_await tx2.execute("INSERT INTO tx_move_test VALUES (20)");
-    co_await tx2.commit();
+        auto tx2 = std::move(tx1);
+        NITRO_CHECK_EQ(pool.idleCount(), 0);
+        co_await tx2.execute("INSERT INTO tx_move_test VALUES (20)");
+        co_await tx2.commit();
+    }
+    co_await Scheduler::current()->sleep_for(0.5);
+    NITRO_CHECK_EQ(pool.idleCount(), 1);
 
     auto conn = co_await pool.acquire();
     auto result = co_await conn->query("SELECT SUM(v) FROM tx_move_test");
     NITRO_CHECK_EQ(std::get<int64_t>(result.get(0, 0)), 30);
+}
+
+NITRO_TEST(transaction_move_assignment)
+{
+    PgPool pool(2, makeConn);
+    {
+        auto setupConn = co_await pool.acquire();
+        co_await setupConn->execute("DROP TABLE IF EXISTS tx_assign_test");
+        co_await setupConn->execute("CREATE TABLE tx_assign_test (v INT)");
+    }
+    co_await Scheduler::current()->sleep_for(0.5);
+
+    {
+        // tx1 inserts value 1 (uncommitted)
+        auto tx1 = co_await pool.newTransaction();
+        co_await tx1.execute("INSERT INTO tx_assign_test VALUES (1)");
+
+        // tx2 inserts value 2 (uncommitted)
+        auto tx2 = co_await pool.newTransaction();
+        co_await tx2.execute("INSERT INTO tx_assign_test VALUES (2)");
+
+        // Move assignment: if not properly implemented, tx1's connection will be returned
+        // to pool WITHOUT rollback, leaving an uncommitted transaction that may auto-commit
+        tx1 = std::move(tx2);
+        co_await Scheduler::current()->sleep_for(0.5);
+
+        // Commit tx1 (which now holds tx2's transaction)
+        co_await tx1.commit();
+    }
+    co_await Scheduler::current()->sleep_for(0.5);
+
+    // Without proper move assignment: one connection left in uncommitted state (BUG)
+    // With proper move assignment: only value 2 is persisted (value 1 rolled back)
+    {
+        auto conn1 = co_await pool.acquire();
+        auto result1 = co_await conn1->query("SELECT v FROM tx_assign_test ORDER BY v");
+        auto conn2 = co_await pool.acquire();
+        auto result2 = co_await conn2->query("SELECT v FROM tx_assign_test ORDER BY v");
+
+        NITRO_CHECK_EQ(result1.rowCount(), 1);
+        NITRO_CHECK_EQ(result2.rowCount(), 1);
+        NITRO_CHECK_EQ(std::get<int64_t>(result1.get(0, 0)), 2);
+        NITRO_CHECK_EQ(std::get<int64_t>(result2.get(0, 0)), 2);
+    }
+
+    {
+        auto conn = co_await pool.acquire();
+        co_await conn->execute("DROP TABLE tx_assign_test");
+    }
 }
 
 int main()

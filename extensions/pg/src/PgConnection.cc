@@ -33,7 +33,7 @@ Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, S
         throw std::runtime_error("PgConnection::connect: " + std::string(PQerrorMessage(pgConn.get())));
 
     co_await scheduler->switch_to();
-    auto channel = std::make_unique<IoChannel>(PQsocket(pgConn.get()), TriggerMode::EdgeTriggered, scheduler);
+    auto channel = std::make_unique<IoChannel>(PQsocket(pgConn.get()), TriggerMode::LevelTriggered, scheduler);
     channel->enableReading();
 
     auto connectResult = co_await channel->perform([&pgConn](int, IoChannel * ch) -> IoChannel::IoStatus {

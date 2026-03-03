@@ -15,6 +15,43 @@ PgTransaction::PgTransaction(PooledConnection conn, Scheduler * scheduler)
 {
 }
 
+// PgTransaction::PgTransaction(PgTransaction && other) noexcept = default;
+// PgTransaction & PgTransaction::operator=(PgTransaction && other) noexcept = default;
+
+PgTransaction::PgTransaction(PgTransaction && other) noexcept
+    : conn_(std::move(other.conn_))
+    , scheduler_(other.scheduler_)
+    , done_(other.done_)
+{
+    other.done_ = true;
+}
+
+PgTransaction & PgTransaction::operator=(PgTransaction && other) noexcept
+{
+    if (this != &other)
+    {
+        if (!done_ && conn_)
+        {
+            scheduler_->spawn([conn = std::move(conn_)]() mutable -> Task<> {
+                try
+                {
+                    co_await conn->rollback();
+                    NITRO_TRACE("PgTransaction: auto rollback successful\n");
+                }
+                catch (const std::exception & e)
+                {
+                    NITRO_ERROR("PgTransaction: auto rollback failed: %s\n", e.what());
+                }
+            });
+        }
+        conn_ = std::move(other.conn_);
+        scheduler_ = other.scheduler_;
+        done_ = other.done_;
+        other.done_ = true;
+    }
+    return *this;
+}
+
 PgTransaction::~PgTransaction()
 {
     if (!done_ && conn_)

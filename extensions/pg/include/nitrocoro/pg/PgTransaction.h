@@ -25,8 +25,8 @@ public:
 
     PgTransaction(const PgTransaction &) = delete;
     PgTransaction & operator=(const PgTransaction &) = delete;
-    PgTransaction(PgTransaction &&) noexcept = default;
-    PgTransaction & operator=(PgTransaction &&) noexcept = default;
+    PgTransaction(PgTransaction && other) noexcept;
+    PgTransaction & operator=(PgTransaction && other) noexcept;
 
     Task<PgResult> query(std::string_view sql, std::vector<PgValue> params = {});
     Task<> execute(std::string_view sql, std::vector<PgValue> params = {});
