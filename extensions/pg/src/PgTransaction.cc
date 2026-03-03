@@ -3,6 +3,8 @@
  * @brief PgTransaction implementation
  */
 #include "nitrocoro/pg/PgTransaction.h"
+#include "nitrocoro/pg/PgConnection.h"
+#include "nitrocoro/pg/PgResult.h"
 #include <nitrocoro/utils/Debug.h>
 
 namespace nitrocoro::pg
@@ -31,7 +33,7 @@ PgTransaction::~PgTransaction()
     }
 }
 
-Task<std::unique_ptr<PgResult>> PgTransaction::query(std::string_view sql, std::vector<PgValue> params)
+Task<PgResult> PgTransaction::query(std::string_view sql, std::vector<PgValue> params)
 {
     co_return co_await conn_->query(sql, std::move(params));
 }

@@ -3,7 +3,7 @@
  * @brief RAII PostgreSQL transaction with automatic rollback on destruction
  */
 #pragma once
-
+#include "nitrocoro/pg/PgResult.h"
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/pg/PgPool.h>
@@ -28,7 +28,7 @@ public:
     PgTransaction(PgTransaction &&) noexcept = default;
     PgTransaction & operator=(PgTransaction &&) noexcept = default;
 
-    Task<std::unique_ptr<PgResult>> query(std::string_view sql, std::vector<PgValue> params = {});
+    Task<PgResult> query(std::string_view sql, std::vector<PgValue> params = {});
     Task<> execute(std::string_view sql, std::vector<PgValue> params = {});
     Task<> commit();
     Task<> rollback();

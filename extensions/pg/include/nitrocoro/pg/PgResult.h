@@ -10,7 +10,8 @@
 #include <variant>
 #include <vector>
 
-struct PGresult;
+struct pg_result;
+typedef struct pg_result PGresult;
 
 namespace nitrocoro::pg
 {

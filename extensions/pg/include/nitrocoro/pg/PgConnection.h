@@ -14,7 +14,8 @@
 #include <string_view>
 #include <vector>
 
-struct PGconn;
+struct pg_conn;
+typedef struct pg_conn PGconn;
 
 namespace nitrocoro::pg
 {

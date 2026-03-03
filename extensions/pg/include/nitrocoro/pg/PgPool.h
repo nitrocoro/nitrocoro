@@ -8,7 +8,6 @@
 #include <nitrocoro/core/Mutex.h>
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
-#include <nitrocoro/pg/PgConnection.h>
 
 #include <functional>
 #include <memory>
@@ -22,55 +21,54 @@ using nitrocoro::Promise;
 using nitrocoro::Scheduler;
 using nitrocoro::Task;
 
+class PgConnection;
 class PgTransaction;
-
-class PooledConnection
-{
-public:
-    PooledConnection(std::shared_ptr<PgConnection> conn, std::function<void(std::shared_ptr<PgConnection>)> returnFn);
-    ~PooledConnection() noexcept;
-
-    PooledConnection(const PooledConnection &) = delete;
-    PooledConnection & operator=(const PooledConnection &) = delete;
-    PooledConnection(PooledConnection &&) = default;
-    PooledConnection & operator=(PooledConnection &&) = default;
-
-    PgConnection * operator->() const { return conn_.get(); }
-    PgConnection & operator*() const { return *conn_; }
-    explicit operator bool() const noexcept { return conn_ != nullptr; }
-
-private:
-    std::shared_ptr<PgConnection> conn_;
-    std::function<void(std::shared_ptr<PgConnection>)> returnFn_;
-};
+class PooledConnection;
 
 class PgPool
 {
 public:
-    using Factory = std::function<Task<std::shared_ptr<PgConnection>>()>;
+    struct PoolState;
+    using Factory = std::function<Task<std::unique_ptr<PgConnection>>()>;
 
-    PgPool(size_t maxSize, Factory factory, Scheduler * scheduler = Scheduler::current())
-        : factory_(std::move(factory)), scheduler_(scheduler), maxSize_(maxSize)
-    {
-    }
+    PgPool(size_t maxSize, Factory factory, Scheduler * scheduler = Scheduler::current());
+    ~PgPool();
     PgPool(const PgPool &) = delete;
     PgPool & operator=(const PgPool &) = delete;
 
     [[nodiscard]] Task<PooledConnection> acquire();
-    size_t idleCount() const { return idle_.size(); }
-
     [[nodiscard]] Task<PgTransaction> newTransaction();
+    size_t idleCount() const;
 
 private:
-    void returnConnection(std::shared_ptr<PgConnection> conn) noexcept;
-
+    std::shared_ptr<PoolState> state_;
     Factory factory_;
-    Scheduler * scheduler_;
-    size_t maxSize_;
-    size_t totalCount_{ 0 };
-    Mutex mutex_;
-    std::queue<std::shared_ptr<PgConnection>> idle_;
-    std::queue<Promise<std::shared_ptr<PgConnection>>> waiters_;
+};
+
+class PooledConnection
+{
+public:
+    PooledConnection() = default;
+    ~PooledConnection();
+
+    PooledConnection(const PooledConnection &) = delete;
+    PooledConnection & operator=(const PooledConnection &) = delete;
+    PooledConnection(PooledConnection && other) noexcept;
+    PooledConnection & operator=(PooledConnection && other) noexcept;
+
+    PgConnection * operator->() const noexcept { return conn_.get(); }
+    PgConnection & operator*() const noexcept { return *conn_; }
+    explicit operator bool() const noexcept { return static_cast<bool>(conn_); }
+
+    void reset() noexcept;
+    std::unique_ptr<PgConnection> detach();
+
+private:
+    friend class PgPool;
+    PooledConnection(std::unique_ptr<PgConnection> conn, std::weak_ptr<PgPool::PoolState> state);
+
+    std::unique_ptr<PgConnection> conn_;
+    std::weak_ptr<PgPool::PoolState> state_;
 };
 
 } // namespace nitrocoro::pg
