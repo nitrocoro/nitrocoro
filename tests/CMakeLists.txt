@@ -23,3 +23,7 @@ add_test(NAME dns_test COMMAND dns_test)
 add_executable(tcp_test tcp_test.cc)
 target_link_libraries(tcp_test PRIVATE nitrocoro)
 add_test(NAME tcp_test COMMAND tcp_test)
+
+add_executable(timeout_test timeout_test.cc)
+target_link_libraries(timeout_test PRIVATE nitrocoro)
+add_test(NAME timeout_test COMMAND timeout_test)

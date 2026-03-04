@@ -8,8 +8,18 @@ namespace nitrocoro
 namespace detail
 {
 
+// priority tag
+template <int N>
+struct Tag : Tag<N - 1>
+{
+};
+template <>
+struct Tag<0>
+{
+};
+
 template <typename T>
-auto getAwaiterImpl(T && value) noexcept(
+auto getAwaiterImpl(T && value, Tag<2>) noexcept(
     noexcept(static_cast<T &&>(value).operator co_await()))
     -> decltype(static_cast<T &&>(value).operator co_await())
 {
@@ -17,7 +27,7 @@ auto getAwaiterImpl(T && value) noexcept(
 }
 
 template <typename T>
-auto getAwaiterImpl(T && value) noexcept(
+auto getAwaiterImpl(T && value, Tag<1>) noexcept(
     noexcept(operator co_await(static_cast<T &&>(value))))
     -> decltype(operator co_await(static_cast<T &&>(value)))
 {
@@ -25,11 +35,18 @@ auto getAwaiterImpl(T && value) noexcept(
 }
 
 template <typename T>
-auto getAwaiter(T && value) noexcept(
-    noexcept(getAwaiterImpl(static_cast<T &&>(value))))
-    -> decltype(getAwaiterImpl(static_cast<T &&>(value)))
+auto getAwaiterImpl(T && value, Tag<0>) noexcept
+    -> decltype(static_cast<T &&>(value).await_ready(), static_cast<T &&>(value))
 {
-    return getAwaiterImpl(static_cast<T &&>(value));
+    return static_cast<T &&>(value);
+}
+
+template <typename T>
+auto getAwaiter(T && value) noexcept(
+    noexcept(getAwaiterImpl(static_cast<T &&>(value), Tag<2>{})))
+    -> decltype(getAwaiterImpl(static_cast<T &&>(value), Tag<2>{}))
+{
+    return getAwaiterImpl(static_cast<T &&>(value), Tag<2>{});
 }
 
 } // namespace detail
