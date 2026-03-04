@@ -6,7 +6,7 @@
 
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/HttpStream.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/TcpServer.h>
 
 #include <functional>
@@ -21,7 +21,7 @@ class HttpServer
 {
 public:
     using Handler = std::function<Task<>(HttpIncomingStream<HttpRequest> &, HttpOutgoingStream<HttpResponse> &)>;
-    using StreamUpgrader = std::function<Task<io::AnyStreamPtr>(net::TcpConnectionPtr)>;
+    using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr)>;
 
     explicit HttpServer(uint16_t port, Scheduler * scheduler = Scheduler::current());
 

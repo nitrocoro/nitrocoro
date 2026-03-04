@@ -5,7 +5,7 @@
 #pragma once
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/HttpParser.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 
 #include <memory>
 #include <string_view>
@@ -23,7 +23,7 @@ public:
 
     static std::unique_ptr<BodyWriter> create(
         TransferMode mode,
-        io::AnyStreamPtr stream,
+        io::StreamPtr stream,
         size_t contentLength = 0);
 };
 

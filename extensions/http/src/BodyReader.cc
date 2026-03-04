@@ -20,7 +20,7 @@ protected:
 };
 
 std::shared_ptr<BodyReader> BodyReader::create(
-    io::AnyStreamPtr stream,
+    io::StreamPtr stream,
     std::shared_ptr<utils::StringBuffer> buffer,
     TransferMode mode,
     size_t contentLength)

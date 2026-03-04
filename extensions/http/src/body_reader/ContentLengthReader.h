@@ -4,7 +4,7 @@
  */
 #pragma once
 #include <nitrocoro/http/BodyReader.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
@@ -12,14 +12,14 @@ namespace nitrocoro::http
 class ContentLengthReader : public BodyReader
 {
 public:
-    ContentLengthReader(io::AnyStreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer, size_t contentLength)
+    ContentLengthReader(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer, size_t contentLength)
         : stream_(std::move(stream)), buffer_(std::move(buffer)), contentLength_(contentLength) {}
 
     Task<size_t> readImpl(char * buf, size_t len) override;
     bool isComplete() const override { return bytesRead_ >= contentLength_; }
 
 private:
-    io::AnyStreamPtr stream_;
+    io::StreamPtr stream_;
     std::shared_ptr<utils::StringBuffer> buffer_;
     const size_t contentLength_;
     size_t bytesRead_ = 0;

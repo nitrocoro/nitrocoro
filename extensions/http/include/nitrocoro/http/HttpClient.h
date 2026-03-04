@@ -8,7 +8,7 @@
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpStream.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/net/Url.h>
 
@@ -26,7 +26,7 @@ struct HttpClientSession
 class HttpClient
 {
 public:
-    using StreamUpgrader = std::function<Task<io::AnyStreamPtr>(net::TcpConnectionPtr)>;
+    using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr)>;
 
     HttpClient() = default;
 
@@ -42,7 +42,7 @@ public:
 
 private:
     Task<HttpCompleteResponse> sendRequest(const std::string & method, const net::Url & url, const std::string & body);
-    Task<HttpCompleteResponse> readResponse(io::AnyStreamPtr stream);
+    Task<HttpCompleteResponse> readResponse(io::StreamPtr stream);
 
     StreamUpgrader upgrader_;
 };

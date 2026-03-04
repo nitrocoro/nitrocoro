@@ -43,7 +43,7 @@ add_library(nitrocoro STATIC
     src/InetAddress.cc
     src/DnsResolver.cc
     src/Dns.cc
-    src/Url.cpp
+    src/Url.cc
     src/Debug.cc
 )
 

@@ -12,7 +12,7 @@ namespace nitrocoro::http
 
 std::unique_ptr<BodyWriter> BodyWriter::create(
     TransferMode mode,
-    io::AnyStreamPtr stream,
+    io::StreamPtr stream,
     size_t contentLength)
 {
     if (mode == TransferMode::ContentLength)

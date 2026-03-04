@@ -2,10 +2,11 @@
  * @file https_test.cc
  * @brief Test HTTPS integration (HTTP + TLS via StreamUpgrader)
  */
+#include <nitrocoro/io/Stream.h>
+#include <nitrocoro/testing/Test.h>
+
 #include <nitrocoro/http/HttpClient.h>
 #include <nitrocoro/http/HttpServer.h>
-#include <nitrocoro/io/AnyStream.h>
-#include <nitrocoro/testing/Test.h>
 #include <nitrocoro/tls/TlsContext.h>
 #include <nitrocoro/tls/TlsPolicy.h>
 #include <nitrocoro/tls/TlsStream.h>
@@ -94,11 +95,11 @@ NITRO_TEST(https_get)
     HttpServer server(0);
 
     // Configure server with TLS upgrader
-    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::accept(conn, serverCtx);
         if (!tlsStream)
             co_return nullptr;
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     server.route("GET", "/", [](auto & req, auto & resp) -> Task<> {
@@ -111,9 +112,9 @@ NITRO_TEST(https_get)
 
     // Configure client with TLS upgrader
     HttpClient client;
-    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::connect(conn, clientCtx);
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     auto response = co_await client.get("https://127.0.0.1:" + std::to_string(server.listeningPort()) + "/");
@@ -129,11 +130,11 @@ NITRO_TEST(https_post)
     auto [serverCtx, clientCtx] = makeContexts();
     HttpServer server(0);
 
-    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::accept(conn, serverCtx);
         if (!tlsStream)
             co_return nullptr;
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     server.route("POST", "/echo", [](auto & req, auto & resp) -> Task<> {
@@ -147,9 +148,9 @@ NITRO_TEST(https_post)
     co_await Scheduler::current()->sleep_for(0.01);
 
     HttpClient client;
-    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::connect(conn, clientCtx);
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     std::string testData = "Test POST data over HTTPS";
@@ -166,11 +167,11 @@ NITRO_TEST(https_large_body)
     auto [serverCtx, clientCtx] = makeContexts();
     HttpServer server(0);
 
-    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::accept(conn, serverCtx);
         if (!tlsStream)
             co_return nullptr;
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     const size_t largeSize = 128 * 1024; // 128 KB
@@ -185,9 +186,9 @@ NITRO_TEST(https_large_body)
     co_await Scheduler::current()->sleep_for(0.01);
 
     HttpClient client;
-    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::connect(conn, clientCtx);
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     auto response = co_await client.get("https://127.0.0.1:" + std::to_string(server.listeningPort()) + "/large");
@@ -204,11 +205,11 @@ NITRO_TEST(https_chunked)
     auto [serverCtx, clientCtx] = makeContexts();
     HttpServer server(0);
 
-    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::accept(conn, serverCtx);
         if (!tlsStream)
             co_return nullptr;
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     server.route("GET", "/chunked", [](auto & req, auto & resp) -> Task<> {
@@ -224,9 +225,9 @@ NITRO_TEST(https_chunked)
     co_await Scheduler::current()->sleep_for(0.01);
 
     HttpClient client;
-    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::connect(conn, clientCtx);
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     auto response = co_await client.get("https://127.0.0.1:" + std::to_string(server.listeningPort()) + "/chunked");
@@ -242,11 +243,11 @@ NITRO_TEST(https_multiple_requests)
     auto [serverCtx, clientCtx] = makeContexts();
     HttpServer server(0);
 
-    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    server.setStreamUpgrader([serverCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::accept(conn, serverCtx);
         if (!tlsStream)
             co_return nullptr;
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     server.route("GET", "/1", [](auto & req, auto & resp) -> Task<> {
@@ -266,9 +267,9 @@ NITRO_TEST(https_multiple_requests)
     co_await Scheduler::current()->sleep_for(0.01);
 
     HttpClient client;
-    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::AnyStreamPtr> {
+    client.setStreamUpgrader([clientCtx](net::TcpConnectionPtr conn) -> Task<io::StreamPtr> {
         auto tlsStream = co_await TlsStream::connect(conn, clientCtx);
-        co_return std::make_shared<io::AnyStream>(tlsStream);
+        co_return std::make_shared<io::Stream>(tlsStream);
     });
 
     std::string baseUrl = "https://127.0.0.1:" + std::to_string(server.listeningPort());

@@ -7,7 +7,7 @@
 #include <nitrocoro/http/HttpClient.h>
 #include <nitrocoro/http/HttpContext.h>
 #include <nitrocoro/http/HttpMessage.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/Dns.h>
 #include <nitrocoro/net/Url.h>
 #include <stdexcept>
@@ -50,7 +50,7 @@ Task<HttpCompleteResponse> HttpClient::sendRequest(const std::string & method, c
     auto conn = co_await net::TcpConnection::connect(net::InetAddress(addr.toIp(), url.port(), addr.isIpV6()));
 
     // Upgrade stream if upgrader is set
-    io::AnyStreamPtr stream;
+    io::StreamPtr stream;
     if (upgrader_)
     {
         stream = co_await upgrader_(conn);
@@ -59,7 +59,7 @@ Task<HttpCompleteResponse> HttpClient::sendRequest(const std::string & method, c
     }
     else
     {
-        stream = std::make_shared<io::AnyStream>(conn);
+        stream = std::make_shared<io::Stream>(conn);
     }
 
     // Build request
@@ -85,7 +85,7 @@ Task<HttpCompleteResponse> HttpClient::sendRequest(const std::string & method, c
     co_return co_await readResponse(stream);
 }
 
-Task<HttpCompleteResponse> HttpClient::readResponse(io::AnyStreamPtr stream)
+Task<HttpCompleteResponse> HttpClient::readResponse(io::StreamPtr stream)
 {
     auto buffer = std::make_shared<utils::StringBuffer>();
     HttpContext<HttpResponse> context(stream, buffer);
@@ -113,7 +113,7 @@ Task<HttpClientSession> HttpClient::stream(const std::string & method, const std
     auto conn = co_await net::TcpConnection::connect(net::InetAddress(addresses[0].toIp(), parsedUrl.port(), addresses[0].isIpV6()));
 
     // Upgrade stream if upgrader is set
-    io::AnyStreamPtr anyStream;
+    io::StreamPtr anyStream;
     if (upgrader_)
     {
         anyStream = co_await upgrader_(conn);
@@ -122,7 +122,7 @@ Task<HttpClientSession> HttpClient::stream(const std::string & method, const std
     }
     else
     {
-        anyStream = std::make_shared<io::AnyStream>(conn);
+        anyStream = std::make_shared<io::Stream>(conn);
     }
 
     // Create outgoing stream for request body

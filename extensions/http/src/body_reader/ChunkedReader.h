@@ -4,7 +4,7 @@
  */
 #pragma once
 #include <nitrocoro/http/BodyReader.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
@@ -12,7 +12,7 @@ namespace nitrocoro::http
 class ChunkedReader : public BodyReader
 {
 public:
-    ChunkedReader(io::AnyStreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer)
+    ChunkedReader(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer)
         : stream_(std::move(stream)), buffer_(std::move(buffer)) {}
 
     Task<size_t> readImpl(char * buf, size_t len) override;
@@ -26,7 +26,7 @@ private:
         Complete
     };
 
-    io::AnyStreamPtr stream_;
+    io::StreamPtr stream_;
     std::shared_ptr<utils::StringBuffer> buffer_;
     State state_ = State::ReadSize;
     size_t currentChunkSize_ = 0;

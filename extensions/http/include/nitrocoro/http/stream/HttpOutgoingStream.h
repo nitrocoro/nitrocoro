@@ -23,9 +23,9 @@ class HttpOutgoingStream<HttpRequest>
     : public HttpOutgoingStreamBase<HttpRequest>
 {
 public:
-    explicit HttpOutgoingStream(io::AnyStreamPtr stream, Promise<> finishedPromise)
+    explicit HttpOutgoingStream(io::StreamPtr stream, Promise<> finishedPromise)
         : HttpOutgoingStreamBase(std::move(stream), std::move(finishedPromise)) {}
-    explicit HttpOutgoingStream(io::AnyStreamPtr stream)
+    explicit HttpOutgoingStream(io::StreamPtr stream)
         : HttpOutgoingStreamBase(std::move(stream), Promise<>(nullptr)) {}
 
     void setMethod(const std::string & method) { data_.method = method; }

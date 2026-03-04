@@ -5,7 +5,7 @@
 #include <nitrocoro/core/Future.h>
 #include <nitrocoro/http/HttpContext.h>
 #include <nitrocoro/http/HttpServer.h>
-#include <nitrocoro/io/AnyStream.h>
+#include <nitrocoro/io/Stream.h>
 #include <nitrocoro/utils/Debug.h>
 
 namespace nitrocoro::http
@@ -62,7 +62,7 @@ Task<> HttpServer::stop()
 
 Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
 {
-    io::AnyStreamPtr stream;
+    io::StreamPtr stream;
 
     if (upgrader_)
     {
@@ -78,7 +78,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
     else
     {
         // No upgrader, use TcpConnection directly
-        stream = std::make_shared<io::AnyStream>(conn);
+        stream = std::make_shared<io::Stream>(conn);
     }
 
     auto buffer = std::make_shared<utils::StringBuffer>();
