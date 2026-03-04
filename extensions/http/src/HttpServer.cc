@@ -117,9 +117,11 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         if (!bodyReader->isComplete())
             co_await bodyReader->drain();
         if (!keepAlive)
+        {
+            co_await stream->shutdown();
             break;
+        }
     }
-    co_await stream->shutdown();
 }
 
 } // namespace nitrocoro::http

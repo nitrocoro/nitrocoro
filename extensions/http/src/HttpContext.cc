@@ -21,10 +21,10 @@ Task<std::optional<MessageType>> HttpContext<MessageType>::receiveMessage()
         {
             char * writePtr = buffer_->prepareWrite(4096);
             size_t n = co_await stream_->read(writePtr, 4096);
-            buffer_->commitWrite(n);
             // TODO: last message, or half message?
             if (n == 0)
                 co_return std::nullopt;
+            buffer_->commitWrite(n);
             continue;
         }
 
