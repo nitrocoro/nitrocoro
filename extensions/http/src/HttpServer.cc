@@ -89,7 +89,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
     {
         auto message = co_await context.receiveMessage();
         if (!message)
-            break;
+            co_return; // shutdown?
         bool keepAlive = message->keepAlive;
 
         // TODO: BodyReader should read regardless of the request border or user desired length!!!

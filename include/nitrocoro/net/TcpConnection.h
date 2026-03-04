@@ -38,12 +38,22 @@ public:
 
     Task<> shutdown();
     Task<> forceClose();
-    // bool isOpen() const; // TODO: implement closed state tracking
+
+    enum class State
+    {
+        None,
+        Connected,
+        LocalShutdown,
+        PeerShutdown,
+        Closed
+    };
+
+    State state() const { return state_; }
 
 private:
     std::shared_ptr<Socket> socket_;
     std::unique_ptr<IoChannel> ioChannelPtr_;
-    Mutex writeMutex_;
+    State state_ = State::None;
 };
 
 } // namespace nitrocoro::net

@@ -104,6 +104,7 @@ TcpConnection::TcpConnection(std::unique_ptr<IoChannel> channelPtr, std::shared_
     : socket_(std::move(socket))
     , ioChannelPtr_(std::move(channelPtr))
 {
+    state_ = State::Connected;
     ioChannelPtr_->enableReading();
 }
 
@@ -114,35 +115,58 @@ Task<size_t> TcpConnection::read(void * buf, size_t len)
     BufferReader reader(buf, len);
     auto result = co_await ioChannelPtr_->performRead(&reader);
     if (result == IoChannel::IoResult::Eof)
+    {
+        if (state_ == State::LocalShutdown)
+            state_ = State::Closed;
+        else
+            state_ = State::PeerShutdown;
         co_return 0;
+    }
     if (result != IoChannel::IoResult::Success)
+    {
+        state_ = State::Closed;
         throw std::runtime_error("TCP read error");
+    }
     co_return reader.readLen();
 }
 
 Task<size_t> TcpConnection::write(const void * buf, size_t len)
 {
-    [[maybe_unused]] auto lock = co_await writeMutex_.scoped_lock();
     BufferWriter writer(buf, len);
     auto result = co_await ioChannelPtr_->performWrite(&writer);
     if (result == IoChannel::IoResult::Eof)
+    {
+        state_ = State::Closed;
         co_return 0;
+    }
     if (result != IoChannel::IoResult::Success)
+    {
+        state_ = State::Closed;
         throw std::runtime_error("TCP write error");
+    }
     co_return len;
 }
 
 Task<> TcpConnection::shutdown()
 {
-    // TODO: need status flag
     co_await ioChannelPtr_->scheduler()->switch_to();
+
+    if (state_ == State::LocalShutdown || state_ == State::Closed)
+        co_return;
+
+    if (state_ == State::PeerShutdown)
+        state_ = State::Closed;
+    else
+        state_ = State::LocalShutdown;
+
     socket_->shutdownWrite();
 }
 
 Task<> TcpConnection::forceClose()
 {
-    // TODO: need status flag
     co_await ioChannelPtr_->scheduler()->switch_to();
+
+    state_ = State::Closed;
     ioChannelPtr_->disableAll();
     ioChannelPtr_->cancelAll();
 }
