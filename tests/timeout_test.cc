@@ -6,9 +6,12 @@
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/core/Timeout.h>
+#include <nitrocoro/net/InetAddress.h>
+#include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/testing/Test.h>
 
 using namespace nitrocoro;
+using namespace nitrocoro::net;
 
 /** Operation completes before timeout: result is returned normally. */
 NITRO_TEST(timeout_completes_in_time)
@@ -67,6 +70,25 @@ NITRO_TEST(timeout_inner_continues_after_timeout)
     // wait long enough for inner to finish on its own
     co_await Scheduler::current()->sleep_for(0.08);
     NITRO_CHECK(innerCompleted); // inner ran to completion despite timeout
+}
+
+/**
+ * Demonstrates the known limitation: after TimeoutException, the inner connect
+ * coroutine keeps running (holding the fd) until the OS-level TCP timeout fires.
+ * There is currently no way to cancel it from outside.
+ */
+NITRO_TEST(timeout_tcp_connect_no_cancel)
+{
+    // 192.0.2.1 is TEST-NET (RFC 5737), guaranteed non-routable — connect will hang
+    InetAddress unreachable("192.0.2.1", 9999);
+    NITRO_CHECK_THROWS_AS(
+        co_await withTimeout(TcpConnection::connect(unreachable), 0.05),
+        TimeoutException);
+    // inner connect coroutine is still alive in the Scheduler at this point:
+    // it holds the socket fd and an epoll registration, waiting for the OS TCP
+    // handshake to either succeed or time out (which can take up to ~2 minutes).
+    // withTimeout has no mechanism to cancel it — cancellation support requires
+    // stop_token propagation through the coroutine chain, which is not yet implemented.
 }
 
 int main()
