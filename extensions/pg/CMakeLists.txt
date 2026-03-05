@@ -18,14 +18,18 @@ target_link_libraries(nitrocoro-pg PUBLIC
     PostgreSQL::PostgreSQL
 )
 
-add_executable(pg_test tests/pg_test.cc)
-target_link_libraries(pg_test PRIVATE nitrocoro-pg)
-add_test(NAME pg_test COMMAND pg_test)
+option(BUILD_TESTING "Build tests" ON)
+if (BUILD_TESTING)
+    enable_testing()
+    add_executable(pg_test tests/pg_test.cc)
+    target_link_libraries(pg_test PRIVATE nitrocoro-pg)
+    add_test(NAME pg_test COMMAND pg_test)
 
-add_executable(pg_pool_test tests/pg_pool_test.cc)
-target_link_libraries(pg_pool_test PRIVATE nitrocoro-pg)
-add_test(NAME pg_pool_test COMMAND pg_pool_test)
+    add_executable(pg_pool_test tests/pg_pool_test.cc)
+    target_link_libraries(pg_pool_test PRIVATE nitrocoro-pg)
+    add_test(NAME pg_pool_test COMMAND pg_pool_test)
 
-add_executable(pg_transaction_test tests/pg_transaction_test.cc)
-target_link_libraries(pg_transaction_test PRIVATE nitrocoro-pg)
-add_test(NAME pg_transaction_test COMMAND pg_transaction_test)
+    add_executable(pg_transaction_test tests/pg_transaction_test.cc)
+    target_link_libraries(pg_transaction_test PRIVATE nitrocoro-pg)
+    add_test(NAME pg_transaction_test COMMAND pg_transaction_test)
+endif ()
