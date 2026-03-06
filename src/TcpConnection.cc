@@ -2,12 +2,13 @@
  * @file TcpConnection.cc
  * @brief Implementation of TcpConnection
  */
+#include <nitrocoro/net/TcpConnection.h>
+
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/io/adapters/BufferReader.h>
 #include <nitrocoro/io/adapters/BufferWriter.h>
 #include <nitrocoro/net/InetAddress.h>
 #include <nitrocoro/net/Socket.h>
-#include <nitrocoro/net/TcpConnection.h>
 
 namespace nitrocoro::net
 {

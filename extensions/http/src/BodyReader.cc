@@ -2,10 +2,11 @@
  * @file BodyReader.cc
  * @brief Implementation for BodyReader
  */
+#include <nitrocoro/http/BodyReader.h>
+
 #include "body_reader/ChunkedReader.h"
 #include "body_reader/ContentLengthReader.h"
 #include "body_reader/UntilCloseReader.h"
-#include <nitrocoro/http/BodyReader.h>
 
 namespace nitrocoro::http
 {

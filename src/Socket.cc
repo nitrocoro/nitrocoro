@@ -3,6 +3,7 @@
  * @brief Implementation of Socket
  */
 #include <nitrocoro/net/Socket.h>
+
 #include <nitrocoro/utils/Debug.h>
 
 #include <cerrno>

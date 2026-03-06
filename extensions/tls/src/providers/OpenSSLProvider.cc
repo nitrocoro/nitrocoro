@@ -6,13 +6,13 @@
 #include <nitrocoro/tls/TlsProvider.h>
 #include <nitrocoro/utils/Debug.h>
 
-#include <cstring>
-#include <stdexcept>
-
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
+
+#include <cstring>
+#include <stdexcept>
 
 namespace nitrocoro::tls
 {

@@ -2,8 +2,9 @@
  * @file HttpHeader.cc
  * @brief Implementation of HttpHeader
  */
-#include <cctype>
 #include <nitrocoro/http/HttpHeader.h>
+
+#include <cctype>
 #include <unordered_map>
 
 namespace nitrocoro::http
@@ -117,7 +118,7 @@ const std::pair<std::string_view, std::string_view> & HttpHeader::codeToNames(Na
 
     static_assert(std::size(pairs) == static_cast<size_t>(NameCode::Unknown) + 1);
 
-#define nitrocoro_HTTP_HEADER_CHECK_PAIR(name)                                        \
+#define nitrocoro_HTTP_HEADER_CHECK_PAIR(name)                                         \
     static_assert(pairs[static_cast<size_t>(NameCode::name)].first == Name::name##_L); \
     static_assert(pairs[static_cast<size_t>(NameCode::name)].second == Name::name##_C)
 

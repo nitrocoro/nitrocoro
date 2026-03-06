@@ -2,10 +2,11 @@
  * @file TcpServer.cc
  * @brief Implementation of coroutine-based TCP server
  */
+#include <nitrocoro/net/TcpServer.h>
+
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/net/Socket.h>
 #include <nitrocoro/net/TcpConnection.h>
-#include <nitrocoro/net/TcpServer.h>
 #include <nitrocoro/utils/Debug.h>
 
 #include <cstring>

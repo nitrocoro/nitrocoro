@@ -2,9 +2,10 @@
  * @file Debug.cc
  * @brief Debug utilities implementation
  */
+#include <nitrocoro/utils/Debug.h>
+
 #include <cstdlib>
 #include <cstring>
-#include <nitrocoro/utils/Debug.h>
 
 namespace nitrocoro
 {

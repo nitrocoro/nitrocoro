@@ -2,12 +2,14 @@
  * @file Scheduler.cc
  * @brief Native coroutine scheduler implementation
  */
+#include <nitrocoro/core/Scheduler.h>
+
+#include <nitrocoro/io/Channel.h>
+#include <nitrocoro/utils/Debug.h>
+
 #include <cassert>
 #include <csignal>
 #include <cstring>
-#include <nitrocoro/core/Scheduler.h>
-#include <nitrocoro/io/Channel.h>
-#include <nitrocoro/utils/Debug.h>
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>

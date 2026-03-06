@@ -3,11 +3,12 @@
  * @brief PostgreSQL async connection implementation
  */
 #include "PgConnectionImpl.h"
-#include "PgResultWrapper.h"
 
-#include <libpq-fe.h>
+#include "PgResultWrapper.h"
 #include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/utils/Debug.h>
+
+#include <libpq-fe.h>
 
 namespace nitrocoro::pg
 {

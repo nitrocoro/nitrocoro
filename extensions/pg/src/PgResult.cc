@@ -1,4 +1,5 @@
-#include "nitrocoro/pg/PgResult.h"
+#include <nitrocoro/pg/PgResult.h>
+
 #include "PgResultWrapper.h"
 
 namespace nitrocoro::pg

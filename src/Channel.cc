@@ -7,10 +7,10 @@
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/utils/Debug.h>
 
-#include <arpa/inet.h>
 #include <cassert>
 #include <cstring>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 
 namespace nitrocoro::io
 {
