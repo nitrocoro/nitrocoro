@@ -2,22 +2,26 @@
  * @file PgPool.cc
  * @brief PgPool implementation
  */
-#include <nitrocoro/core/CancelToken.h>
 #include <nitrocoro/pg/PgPool.h>
 
 #include "PgConnectionImpl.h"
 #include "PoolState.h"
 #include "PooledConnection.h"
+#include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/pg/PgTransaction.h>
 
 namespace nitrocoro::pg
 {
 
 PgPool::PgPool(PgPoolConfig config, Scheduler * scheduler)
-    : state_(std::make_shared<PoolState>(scheduler, config.maxSize))
-    , config_(std::move(config))
-    , connStr_(config_.connect.toConnStr())
+    : config_(std::move(config))
 {
+    auto state = std::make_shared<PoolState>();
+    state->scheduler = scheduler;
+    state->maxSize = config_.maxSize;
+    state->connStr = config_.connect.toConnStr();
+    state->connectTimeoutMs = config_.connect.connectTimeoutMs;
+    state_ = std::move(state);
 }
 
 PgPool::~PgPool() = default;
@@ -27,55 +31,31 @@ size_t PgPool::idleCount() const
     return state_->idle.size();
 }
 
-Task<std::unique_ptr<PgConnection>> PgPool::acquire()
+Task<std::unique_ptr<PgConnection>> PgPool::acquire(CancelToken cancelToken)
 {
-    std::unique_ptr<PgConnectionImpl> conn;
+    co_await state_->scheduler->switch_to();
+
+    CancelSource defaultSrc(state_->scheduler);
+    if (!cancelToken && state_->connectTimeoutMs > 0)
     {
-        [[maybe_unused]] auto lock = co_await state_->mutex.scoped_lock();
-        if (!state_->idle.empty())
-        {
-            conn = std::move(state_->idle.front());
-            state_->idle.pop();
-        }
-        else if (state_->totalCount < state_->maxSize)
-        {
-            ++state_->totalCount;
-        }
-        else
-        {
-            Promise<std::unique_ptr<PgConnectionImpl>> promise(state_->scheduler);
-            auto future = promise.get_future();
-            state_->waiters.push(std::move(promise));
-            lock.unlock();
-            conn = co_await future.get();
-        }
+        defaultSrc.cancelAfter(std::chrono::milliseconds(state_->connectTimeoutMs));
+        cancelToken = defaultSrc.token();
     }
 
-    if (!conn)
-    {
-        std::exception_ptr err;
-        try
+    auto waiter = std::make_shared<PoolState::Waiter>();
+    waiter->cancelReg = cancelToken.onCancel([w = std::weak_ptr(waiter)] {
+        if (auto p = w.lock(); p && !p->cancelled)
         {
-            CancelSource timeoutSource(state_->scheduler);
-            if (config_.connect.connectTimeoutMs > 0)
-            {
-                timeoutSource.cancelAfter(std::chrono::milliseconds(config_.connect.connectTimeoutMs));
-            }
-            conn = co_await PgConnectionImpl::connect(connStr_, timeoutSource.token(), state_->scheduler);
+            p->cancelled = true;
+            p->promise.set_exception(
+                std::make_exception_ptr(PgTimeoutError("PgPool: acquire timed out")));
         }
-        catch (...)
-        {
-            err = std::current_exception();
-        }
+    });
 
-        if (err)
-        {
-            [[maybe_unused]] auto lock = co_await state_->mutex.scoped_lock();
-            --state_->totalCount;
-            std::rethrow_exception(err);
-        }
-    }
-
+    auto future = waiter->promise.get_future();
+    state_->waiters.push(waiter);
+    PoolState::dispatch(state_);
+    auto conn = co_await future.get();
     co_return std::make_unique<PooledConnection>(std::move(conn), std::weak_ptr<PoolState>(state_));
 }
 

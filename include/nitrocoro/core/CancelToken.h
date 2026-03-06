@@ -147,6 +147,8 @@ class CancelToken
 public:
     CancelToken() = default; // None — never cancelled
 
+    explicit operator bool() const noexcept { return state_ != nullptr; }
+
     bool isCancelled() const noexcept
     {
         return state_ && state_->isCancelled();
@@ -157,7 +159,7 @@ public:
         if (!state_)
             return {};
         uint64_t id = state_->addCallback(std::move(cb), Scheduler::current());
-        return CancelRegistration(state_, id);
+        return { state_, id };
     }
 
     struct [[nodiscard]] CancelledAwaiter
