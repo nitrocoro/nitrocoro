@@ -25,11 +25,26 @@ using nitrocoro::io::Channel;
 class TcpServer
 {
 public:
+    /**
+     * @brief Connection handler callback type.
+     *
+     * The handler owns the connection's logical lifetime: it must not return
+     * until the connection is fully done (all reads/writes complete, peer
+     * disconnected, or explicitly closed). Returning early while holding
+     * external references to the connection bypasses stop() shutdown.
+     */
     using ConnectionHandler = std::function<Task<>(std::shared_ptr<TcpConnection>)>;
 
     explicit TcpServer(uint16_t port, Scheduler * scheduler = Scheduler::current());
     ~TcpServer();
 
+    /**
+     * @brief Start accepting connections and invoke @p handler for each one.
+     *
+     * Suspends until stop() is called or a fatal accept error occurs.
+     * Each handler runs as an independent spawned coroutine; the server
+     * considers a connection closed when its handler returns.
+     */
     Task<> start(ConnectionHandler handler);
     Task<> stop();
     Task<> wait() const;

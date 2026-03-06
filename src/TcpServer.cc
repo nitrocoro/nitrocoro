@@ -90,7 +90,6 @@ private:
     std::shared_ptr<Socket> socket_;
 };
 
-// TODO: handler must be copy-constructible now, we need more flexibility.
 Task<> TcpServer::start(ConnectionHandler handler)
 {
     co_await scheduler_->switch_to();
@@ -99,20 +98,16 @@ Task<> TcpServer::start(ConnectionHandler handler)
         throw std::logic_error("TcpServer already started");
     }
 
-    try
-    {
-        if (::listen(listenSocketPtr_->fd(), 128) < 0)
-            throw std::runtime_error(std::string("Failed to listen: ") + strerror(errno));
-    }
-    catch (...)
+    if (::listen(listenSocketPtr_->fd(), 128) < 0)
     {
         stopped_.store(true);
         stopPromise_.set_value();
-        throw;
+        throw std::runtime_error(std::string("Failed to listen: ") + strerror(errno));
     }
-    NITRO_INFO("TcpServer listening on port %hu", port_);
+    NITRO_DEBUG("TcpServer listening on port %hu", port_);
 
     auto handlerPtr = std::make_shared<ConnectionHandler>(std::move(handler));
+    std::weak_ptr<ConnectionSet> weakConnSet{ connSetPtr_ };
     listenChannel_ = std::make_unique<Channel>(listenSocketPtr_->fd(), TriggerMode::LevelTriggered, scheduler_);
     listenChannel_->setGuard(listenSocketPtr_);
     listenChannel_->enableReading();
@@ -122,7 +117,7 @@ Task<> TcpServer::start(ConnectionHandler handler)
         auto result = co_await listenChannel_->performRead(&acceptor);
         if (result == Channel::IoResult::Canceled)
         {
-            NITRO_INFO("TcpServer::close() called, break accepting loop");
+            NITRO_DEBUG("TcpServer::close() called, break accepting loop");
             break;
         }
         if (result != Channel::IoResult::Success)
@@ -137,27 +132,31 @@ Task<> TcpServer::start(ConnectionHandler handler)
         ioChannelPtr->setGuard(socket);
         auto connPtr = std::make_shared<TcpConnection>(std::move(ioChannelPtr), socket);
         connSetPtr_->insert(connPtr);
-        std::weak_ptr<ConnectionSet> weakConnSet{ connSetPtr_ };
         scheduler_->spawn([scheduler = scheduler_, handlerPtr, connPtr, weakConnSet]() mutable -> Task<> {
             try
             {
                 co_await (*handlerPtr)(connPtr);
             }
+            catch (const std::exception & ex)
+            {
+                NITRO_ERROR("TcpServer handler unhandled exception: %s", ex.what());
+            }
             catch (...)
             {
-                NITRO_ERROR("Exception escaped from TcpServer handler");
+                NITRO_ERROR("TcpServer handler unknown exception");
             }
             co_await scheduler->switch_to();
+            // Handler returned — connection's logical lifetime is over.
+            // Erase from the set so stop() no longer tries to shut it down.
             if (auto connSetPtr = weakConnSet.lock())
             {
                 connSetPtr->erase(connPtr);
             }
-            // TODO: force close?
         });
     }
     listenChannel_->disableAll();
     stopPromise_.set_value();
-    NITRO_INFO("TcpServer::start() quit");
+    NITRO_DEBUG("TcpServer::start() quit");
 }
 
 Task<> TcpServer::stop()
@@ -166,7 +165,7 @@ Task<> TcpServer::stop()
     if (stopped_.exchange(true))
         co_return;
 
-    NITRO_INFO("TcpServer::stop() requested");
+    NITRO_DEBUG("TcpServer::stop() requested");
     listenChannel_->disableAll(); // stop listening first
     listenChannel_->cancelAll();
 
