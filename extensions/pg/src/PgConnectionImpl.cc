@@ -5,6 +5,7 @@
 #include "PgConnectionImpl.h"
 
 #include "PgResultWrapper.h"
+#include <nitrocoro/pg/PgConfig.h>
 #include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/utils/Debug.h>
 
@@ -14,6 +15,22 @@ namespace nitrocoro::pg
 {
 
 using nitrocoro::io::Channel;
+
+std::string PgConnectConfig::toConnStr() const
+{
+    if (!connStr.empty())
+        return connStr;
+    std::string s;
+    s += "host='" + host + "' ";
+    s += "port='" + std::to_string(port) + "' ";
+    if (!dbname.empty())
+        s += "dbname='" + dbname + "' ";
+    if (!user.empty())
+        s += "user='" + user + "' ";
+    if (!password.empty())
+        s += "password='" + password + "' ";
+    return s;
+}
 
 struct PgConnectionImpl::PgConnWrapper
 {
@@ -34,7 +51,12 @@ PgConnectionImpl::PgConnectionImpl(std::shared_ptr<PgConnWrapper> conn, std::uni
 {
 }
 
-Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, Scheduler * scheduler)
+Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(const PgConnectConfig & config, Scheduler * scheduler)
+{
+    co_return co_await connect(config.toConnStr(), scheduler);
+}
+
+Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string connStr, Scheduler * scheduler)
 {
     auto pgConn = std::make_shared<PgConnectionImpl::PgConnWrapper>(PQconnectStart(connStr.c_str()));
     if (!pgConn->raw)
@@ -71,6 +93,16 @@ Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, S
     if (PQsetnonblocking(pgConn->raw, 1) != 0)
         throw PgConnectionError("PQsetnonblocking: " + std::string(PQerrorMessage(pgConn->raw)));
     co_return std::make_unique<PgConnectionImpl>(std::move(pgConn), std::move(channel));
+}
+
+Task<std::unique_ptr<PgConnection>> PgConnection::connect(const PgConnectConfig & config, Scheduler * scheduler)
+{
+    co_return co_await PgConnectionImpl::connect(config, scheduler);
+}
+
+Task<std::unique_ptr<PgConnection>> PgConnection::connect(std::string connStr, Scheduler * scheduler)
+{
+    co_return co_await PgConnectionImpl::connect(std::move(connStr), scheduler);
 }
 
 Scheduler * PgConnectionImpl::scheduler() const

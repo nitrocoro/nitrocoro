@@ -6,9 +6,9 @@
 
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
+#include <nitrocoro/pg/PgConfig.h>
 #include <nitrocoro/pg/PgConnection.h>
 
-#include <functional>
 #include <memory>
 
 namespace nitrocoro::pg
@@ -20,9 +20,7 @@ class PgTransaction;
 class PgPool
 {
 public:
-    using Factory = std::function<Task<std::unique_ptr<PgConnection>>()>;
-
-    PgPool(size_t maxSize, Factory factory, Scheduler * scheduler = Scheduler::current());
+    explicit PgPool(PgPoolConfig config, Scheduler * scheduler = Scheduler::current());
     ~PgPool();
     PgPool(const PgPool &) = delete;
     PgPool & operator=(const PgPool &) = delete;
@@ -33,7 +31,8 @@ public:
 
 private:
     std::shared_ptr<PoolState> state_;
-    Factory factory_;
+    PgPoolConfig config_;
+    std::string connStr_;
 };
 
 } // namespace nitrocoro::pg

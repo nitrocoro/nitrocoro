@@ -6,6 +6,7 @@
 
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/core/Task.h>
+#include <nitrocoro/pg/PgConfig.h>
 #include <nitrocoro/pg/PgResult.h>
 
 #include <memory>
@@ -21,6 +22,8 @@ class PgConnection
 public:
     static Task<std::unique_ptr<PgConnection>> connect(std::string connStr,
                                                        Scheduler * scheduler = Scheduler::current());
+    static Task<std::unique_ptr<PgConnection>> connect(const PgConnectConfig & config,
+                                                       Scheduler * scheduler = Scheduler::current());
 
     PgConnection(const PgConnection &) = delete;
     PgConnection & operator=(const PgConnection &) = delete;
@@ -31,8 +34,17 @@ public:
     virtual Scheduler * scheduler() const = 0;
     virtual bool isAlive() const = 0;
 
-    virtual Task<PgResult> query(std::string_view sql, std::vector<PgValue> params = {}) = 0;
-    virtual Task<> execute(std::string_view sql, std::vector<PgValue> params = {}) = 0;
+    virtual Task<PgResult> query(std::string_view sql, std::vector<PgValue> params) = 0;
+    virtual Task<> execute(std::string_view sql, std::vector<PgValue> params) = 0;
+
+    Task<PgResult> query(std::string_view sql)
+    {
+        co_return co_await query(sql, {});
+    }
+    Task<> execute(std::string_view sql)
+    {
+        co_return co_await execute(sql, {});
+    }
 
 protected:
     PgConnection() = default;

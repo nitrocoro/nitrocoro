@@ -12,9 +12,10 @@
 namespace nitrocoro::pg
 {
 
-PgPool::PgPool(size_t maxSize, Factory factory, Scheduler * scheduler)
-    : state_(std::make_shared<PoolState>(scheduler, maxSize))
-    , factory_(std::move(factory))
+PgPool::PgPool(PgPoolConfig config, Scheduler * scheduler)
+    : state_(std::make_shared<PoolState>(scheduler, config.maxSize))
+    , config_(std::move(config))
+    , connStr_(config_.connect.toConnStr())
 {
 }
 
@@ -52,10 +53,9 @@ Task<std::unique_ptr<PgConnection>> PgPool::acquire()
     if (!conn)
     {
         std::exception_ptr err;
-        std::unique_ptr<PgConnection> raw;
         try
         {
-            raw = co_await factory_();
+            conn = co_await PgConnectionImpl::connect(connStr_, state_->scheduler);
         }
         catch (...)
         {
@@ -68,9 +68,6 @@ Task<std::unique_ptr<PgConnection>> PgPool::acquire()
             --state_->totalCount;
             std::rethrow_exception(err);
         }
-
-        // factory_ returns unique_ptr<PgConnection> which is actually a PgConnectionImpl
-        conn.reset(static_cast<PgConnectionImpl *>(raw.release()));
     }
 
     co_return std::make_unique<PooledConnection>(std::move(conn), std::weak_ptr<PoolState>(state_));

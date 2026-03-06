@@ -15,20 +15,25 @@
 using namespace nitrocoro;
 using namespace nitrocoro::pg;
 
-static std::string connStr()
+static PgPoolConfig makeConfig(size_t maxSize = 2)
 {
+    PgPoolConfig cfg;
     const char * env = std::getenv("PG_CONN_STR");
-    return env ? env : "host=localhost dbname=test user=postgres";
-}
-
-Task<std::unique_ptr<PgConnection>> makeConn()
-{
-    co_return co_await PgConnection::connect(connStr());
+    if (env)
+        cfg.connect.connStr = env;
+    else
+    {
+        cfg.connect.host = "localhost";
+        cfg.connect.dbname = "test";
+        cfg.connect.user = "postgres";
+    }
+    cfg.maxSize = maxSize;
+    return cfg;
 }
 
 NITRO_TEST(pool_acquire)
 {
-    PgPool pool(2, makeConn);
+    PgPool pool(makeConfig(2));
     auto conn = co_await pool.acquire();
     NITRO_CHECK(conn);
     auto result = co_await conn->query("SELECT 'pool' AS src");
@@ -37,7 +42,7 @@ NITRO_TEST(pool_acquire)
 
 NITRO_TEST(pool_reuse)
 {
-    PgPool pool(2, makeConn);
+    PgPool pool(makeConfig(2));
     {
         auto c1 = co_await pool.acquire();
         auto result = co_await c1->query("SELECT 1");
@@ -49,7 +54,7 @@ NITRO_TEST(pool_reuse)
 
 NITRO_TEST(pool_waiter)
 {
-    PgPool pool(1, makeConn);
+    PgPool pool(makeConfig(1));
     auto c1 = co_await pool.acquire();
     NITRO_CHECK_EQ(pool.idleCount(), 0);
 
@@ -68,7 +73,7 @@ NITRO_TEST(pool_waiter)
 
 NITRO_TEST(pooled_connection_reset)
 {
-    PgPool pool(1, makeConn);
+    PgPool pool(makeConfig(1));
     auto conn = co_await pool.acquire();
     NITRO_CHECK_EQ(pool.idleCount(), 0);
 
@@ -79,7 +84,7 @@ NITRO_TEST(pooled_connection_reset)
 
 NITRO_TEST(pooled_connection_bool_operator)
 {
-    PgPool pool(1, makeConn);
+    PgPool pool(makeConfig(1));
     auto conn = co_await pool.acquire();
     NITRO_CHECK(conn);
 

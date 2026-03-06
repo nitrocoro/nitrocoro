@@ -46,4 +46,8 @@ if (BUILD_TESTING)
     add_executable(pg_transaction_test tests/pg_transaction_test.cc)
     target_link_libraries(pg_transaction_test PRIVATE nitrocoro-pg)
     add_test(NAME pg_transaction_test COMMAND pg_transaction_test)
+
+    add_executable(pg_config_test tests/pg_config_test.cc)
+    target_link_libraries(pg_config_test PRIVATE nitrocoro-pg)
+    add_test(NAME pg_config_test COMMAND pg_config_test)
 endif ()
