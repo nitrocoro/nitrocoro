@@ -20,6 +20,7 @@ struct PgConnectConfig
     std::string user;
     std::string password;
 
+    int connectTimeoutMs = 0;                              ///< 0 = disabled; max time to establish a connection
     int statementTimeoutMs = 0;                           ///< 0 = disabled; maps to statement_timeout conn option (ms)
     int lockTimeoutMs = 0;                                ///< 0 = disabled; maps to lock_timeout conn option (ms)
     std::string applicationName;                          ///< maps to application_name conn option

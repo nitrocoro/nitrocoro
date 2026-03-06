@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <nitrocoro/core/CancelToken.h>
 #include <nitrocoro/io/Channel.h>
 #include <nitrocoro/pg/PgConnection.h>
 
@@ -19,8 +20,10 @@ class PgConnectionImpl : public PgConnection
     struct PgConnWrapper;
 
 public:
-    static Task<std::unique_ptr<PgConnectionImpl>> connect(std::string connStr, Scheduler * scheduler);
     static Task<std::unique_ptr<PgConnectionImpl>> connect(const PgConnectConfig & config, Scheduler * scheduler);
+    static Task<std::unique_ptr<PgConnectionImpl>> connect(std::string connStr,
+                                                           Scheduler * scheduler,
+                                                           CancelToken cancelToken = {});
 
     PgConnectionImpl(std::shared_ptr<PgConnWrapper> conn, std::unique_ptr<io::Channel> channel);
     ~PgConnectionImpl() override = default;

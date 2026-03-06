@@ -5,6 +5,7 @@
 #include "PgConnectionImpl.h"
 
 #include "PgResultWrapper.h"
+#include <nitrocoro/core/CancelToken.h>
 #include <nitrocoro/pg/PgConfig.h>
 #include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/utils/Debug.h>
@@ -132,10 +133,18 @@ PgConnectionImpl::PgConnectionImpl(std::shared_ptr<PgConnWrapper> conn, std::uni
 
 Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(const PgConnectConfig & config, Scheduler * scheduler)
 {
-    co_return co_await connect(config.toConnStr(), scheduler);
+    if (config.connectTimeoutMs <= 0)
+        co_return co_await connect(config.toConnStr(), scheduler);
+
+    CancelSource timeoutSource(scheduler);
+    timeoutSource.cancelAfter(std::chrono::microseconds(config.connectTimeoutMs));
+
+    co_return co_await connect(config.toConnStr(), scheduler, timeoutSource.token());
 }
 
-Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string connStr, Scheduler * scheduler)
+Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string connStr,
+                                                                  Scheduler * scheduler,
+                                                                  CancelToken cancelToken)
 {
     auto pgConn = std::make_shared<PgConnectionImpl::PgConnWrapper>(PQconnectStart(connStr.c_str()));
     if (!pgConn->raw)
@@ -149,7 +158,12 @@ Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string co
     channel->setGuard(pgConn);
     channel->enableReading();
 
-    auto connectResult = co_await channel->perform([&pgConn](int, Channel * ch) -> Channel::IoStatus {
+    // auto un-reg when leaving scope
+    auto reg = cancelToken.onCancel([ch = channel.get()] { ch->cancelAll(); });
+
+    auto connectResult = co_await channel->perform([&pgConn, &cancelToken](int, Channel * ch) -> Channel::IoStatus {
+        if (cancelToken.isCancelled())
+            return Channel::IoStatus::Error;
         PostgresPollingStatusType s = PQconnectPoll(pgConn->raw);
         NITRO_TRACE("PgConnection: PQconnectPoll=%d", (int)s);
         if (s == PGRES_POLLING_FAILED)
@@ -166,6 +180,8 @@ Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string co
         }
         return Channel::IoStatus::Success; // PGRES_POLLING_OK
     });
+    if (connectResult == Channel::IoResult::Canceled || cancelToken.isCancelled())
+        throw PgTimeoutError("PgConnection: connect timed out");
     if (connectResult != Channel::IoResult::Success)
         throw PgConnectionError("PgConnection: handshake failed");
     NITRO_TRACE("PgConnection: connected (fd=%d)", PQsocket(pgConn->raw));

@@ -148,6 +148,26 @@ NITRO_TEST(transaction_basic)
     NITRO_CHECK(std::get<int64_t>(result.get(0, 0)) == 99);
 }
 
+NITRO_TEST(connect_timeout)
+{
+    PgConnectConfig cfg;
+    cfg.host = "192.0.2.1"; // RFC 5737 documentation address, guaranteed unreachable
+    cfg.dbname = "test";
+    cfg.connectTimeoutMs = 100;
+
+    bool threw = false;
+    try
+    {
+        co_await PgConnection::connect(cfg);
+    }
+    catch (const PgTimeoutError & ex)
+    {
+        NITRO_INFO("Expected exception: %s", ex.what());
+        threw = true;
+    }
+    NITRO_CHECK(threw);
+}
+
 NITRO_TEST(statement_timeout_triggers_error)
 {
     auto cfg = baseConfig();

@@ -34,4 +34,10 @@ public:
     using PgException::PgException;
 };
 
+class PgTimeoutError : public PgException
+{
+public:
+    using PgException::PgException;
+};
+
 } // namespace nitrocoro::pg
