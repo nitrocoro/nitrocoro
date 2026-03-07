@@ -153,8 +153,12 @@ Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string co
     if (PQstatus(pgConn->raw) == CONNECTION_BAD)
         throw PgConnectionError("PgConnection::connect: " + std::string(PQerrorMessage(pgConn->raw)));
 
+    int sockfd = PQsocket(pgConn->raw);
+    if (sockfd < 0)
+        throw PgConnectionError("PgConnection::connect: " + std::string(PQerrorMessage(pgConn->raw)));
+
     co_await scheduler->switch_to();
-    auto channel = std::make_unique<io::Channel>(PQsocket(pgConn->raw), TriggerMode::LevelTriggered, scheduler);
+    auto channel = std::make_unique<io::Channel>(sockfd, TriggerMode::LevelTriggered, scheduler);
     channel->setGuard(pgConn);
     channel->enableReading();
 
@@ -342,7 +346,8 @@ Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vecto
     if (status != PGRES_TUPLES_OK && status != PGRES_COMMAND_OK)
     {
         std::string err = PQresultErrorMessage(res->raw);
-        throw PgQueryError("PgConnection query error: " + err);
+        const char * sqlstate = PQresultErrorField(res->raw, PG_DIAG_SQLSTATE);
+        throw PgQueryError("PgConnection query error: " + err, sqlstate ? sqlstate : "");
     }
 
     co_return PgResult(std::move(res));

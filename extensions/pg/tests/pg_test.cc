@@ -149,6 +149,37 @@ NITRO_TEST(transaction_basic)
     NITRO_CHECK(std::get<int64_t>(result.get(0, 0)) == 99);
 }
 
+NITRO_TEST(query_syntax_error)
+{
+    auto conn = co_await PgConnection::connect(connStr());
+    try
+    {
+        co_await conn->query("SELECT * FORM pg_class");
+        NITRO_REQUIRE(false);
+    }
+    catch (const PgQueryError & e)
+    {
+        NITRO_CHECK(e.sqlstate() == "42601" || e.sqlstate() == "42P01"); // syntax_error or undefined_table
+        NITRO_CHECK(!std::string(e.what()).empty());
+    }
+}
+
+NITRO_TEST(query_unique_violation)
+{
+    auto conn = co_await PgConnection::connect(connStr());
+    co_await conn->execute("CREATE TEMP TABLE uq_test (v INT UNIQUE)");
+    co_await conn->execute("INSERT INTO uq_test VALUES (1)");
+    try
+    {
+        co_await conn->execute("INSERT INTO uq_test VALUES (1)");
+        NITRO_REQUIRE(false);
+    }
+    catch (const PgQueryError & e)
+    {
+        NITRO_CHECK(e.sqlstate() == "23505");
+    }
+}
+
 NITRO_TEST(connect_timeout)
 {
     PgConnectConfig cfg;
@@ -193,15 +224,15 @@ NITRO_TEST(query_cancel)
 {
     // pre-cancelled: throws immediately without sending request
     auto conn1 = co_await PgConnection::connect(connStr());
-    CancelSource pre;
-    pre.cancel();
-    NITRO_CHECK_THROWS_AS(co_await conn1->query("SELECT 1", {}, pre.token()), PgCancelledError);
+    CancelSource source1;
+    source1.cancel();
+    NITRO_CHECK_THROWS_AS(co_await conn1->query("SELECT 1", {}, source1.token()), PgCancelledError);
 
     // cancelled during execution
     auto conn2 = co_await PgConnection::connect(connStr());
-    CancelSource mid;
-    mid.cancelAfter(std::chrono::milliseconds(10));
-    NITRO_CHECK_THROWS_AS(co_await conn2->query("SELECT pg_sleep(10)", {}, mid.token()), PgCancelledError);
+    CancelSource source2;
+    source2.cancelAfter(std::chrono::milliseconds(10));
+    NITRO_CHECK_THROWS_AS(co_await conn2->query("SELECT pg_sleep(10)", {}, source2.token()), PgCancelledError);
 }
 
 NITRO_TEST(execute_cancel)

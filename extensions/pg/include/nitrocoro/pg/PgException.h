@@ -10,10 +10,17 @@
 namespace nitrocoro::pg
 {
 
-class PgException : public std::runtime_error
+class PgException : public std::exception
 {
 public:
-    using std::runtime_error::runtime_error;
+    explicit PgException(std::string msg, std::string sqlstate = {})
+        : msg_(std::move(msg)), sqlstate_(std::move(sqlstate)) {}
+    const char * what() const noexcept override { return msg_.c_str(); }
+    std::string_view sqlstate() const { return sqlstate_; }
+
+private:
+    std::string msg_;
+    std::string sqlstate_;
 };
 
 class PgConnectionError : public PgException
