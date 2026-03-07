@@ -33,10 +33,28 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <typeinfo>
 #include <vector>
 
 namespace nitrocoro::test
 {
+
+#if defined(__GNUG__) || defined(__clang__)
+#include <cxxabi.h>
+inline std::string demangle(const char * name)
+{
+    int status;
+    char * buf = abi::__cxa_demangle(name, nullptr, nullptr, &status);
+    std::string result = (status == 0 && buf) ? buf : name;
+    std::free(buf);
+    return result;
+}
+#else
+inline std::string demangle(const char * name)
+{
+    return name;
+}
+#endif
 
 struct TestCtx
 {
@@ -351,27 +369,43 @@ struct Registrar
         }                                               \
     } while (0)
 
-#define NITRO_THROWS_AS__(expr, ExType, msg, on_fail)   \
-    do                                                  \
-    {                                                   \
-        nitrocoro::test::record_check(TEST_CTX);        \
-        bool _threw_ = false;                           \
-        try                                             \
-        {                                               \
-            (void)(expr);                               \
-        }                                               \
-        catch (const ExType &)                          \
-        {                                               \
-            _threw_ = true;                             \
-        }                                               \
-        catch (...)                                     \
-        {                                               \
-        }                                               \
-        if (!_threw_)                                   \
-        {                                               \
-            NITRO_TEST_RECORD_FAILURE__(msg, TEST_CTX); \
-            on_fail;                                    \
-        }                                               \
+#define NITRO_THROWS_AS__(expr, ExType, msg, on_fail)                     \
+    do                                                                    \
+    {                                                                     \
+        nitrocoro::test::record_check(TEST_CTX);                          \
+        bool _threw_ = false;                                             \
+        std::string _wrong_type_;                                         \
+        std::string _wrong_msg_;                                          \
+        try                                                               \
+        {                                                                 \
+            (void)(expr);                                                 \
+        }                                                                 \
+        catch (const ExType &)                                            \
+        {                                                                 \
+            _threw_ = true;                                               \
+        }                                                                 \
+        catch (const std::exception & _e_)                                \
+        {                                                                 \
+            _wrong_type_ = nitrocoro::test::demangle(typeid(_e_).name()); \
+            _wrong_msg_ = _e_.what();                                     \
+        }                                                                 \
+        catch (...)                                                       \
+        {                                                                 \
+            _wrong_type_ = "<unknown non-std exception>";                 \
+        }                                                                 \
+        if (!_threw_)                                                     \
+        {                                                                 \
+            if (!_wrong_type_.empty())                                    \
+                printf("\x1B[0;31m[FAIL]\x1B[0m %s:%d: " msg              \
+                       "\n  Got: %s: %s\n",                               \
+                       __FILE__, __LINE__,                                \
+                       _wrong_type_.c_str(), _wrong_msg_.c_str());        \
+            else                                                          \
+                NITRO_TEST_RECORD_FAILURE__(msg, TEST_CTX);               \
+            if (!_wrong_type_.empty())                                    \
+                ++TEST_CTX->failures;                                     \
+            on_fail;                                                      \
+        }                                                                 \
     } while (0)
 
 #define NITRO_CHECK_THROWS(expr)              NITRO_THROWS__(expr, #expr " did not throw", (void)0)
