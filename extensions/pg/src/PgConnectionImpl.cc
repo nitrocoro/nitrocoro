@@ -209,11 +209,10 @@ Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vecto
     if (!pgConn_)
         throw PgConnectionError("PgConnection: operation on empty connection");
 
+    co_await channel_->scheduler()->switch_to();
     if (cancelToken.isCancelled())
         throw PgCancelledError("PgConnection: query cancelled");
-
     auto reg = cancelToken.onCancel([ch = channel_.get()] {
-        // TODO: need to handle cancel logic
         ch->cancelAll();
     });
 
@@ -308,6 +307,9 @@ Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vecto
     {
         throw PgCancelledError("PgConnection: query canceled (flush)");
     }
+
+    if (cancelToken.isCancelled())
+        throw PgCancelledError("PgConnection: query canceled (read)");
 
     std::shared_ptr<PgResultWrapper> res;
     auto readResult = co_await channel_->performRead([this, &res](int, Channel *) -> Channel::IoStatus {
