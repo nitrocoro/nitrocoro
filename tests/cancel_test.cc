@@ -136,20 +136,20 @@ NITRO_TEST(cancel_cancelled_multiple_waiters)
     NITRO_CHECK_EQ(count, 3);
 }
 
-/** CancelSource destructor automatically cancels, resuming waiters. */
-NITRO_TEST(cancel_source_destructor_cancels)
+/** CancelSource destructor does NOT cancel — token remains live. */
+NITRO_TEST(cancel_source_destructor_no_cancel)
 {
     CancelToken token;
     {
         CancelSource src;
         token = src.token();
-    } // src destroyed here — must auto-cancel
-    NITRO_CHECK(token.isCancelled());
+    } // src destroyed — must NOT cancel
+    NITRO_CHECK(!token.isCancelled());
     co_return;
 }
 
-/** CancelSource destructor fires onCancel callbacks. */
-NITRO_TEST(cancel_source_destructor_fires_callbacks)
+/** CancelSource destructor does NOT fire onCancel callbacks. */
+NITRO_TEST(cancel_source_destructor_no_callbacks)
 {
     int count = 0;
     CancelRegistration reg;
@@ -157,8 +157,19 @@ NITRO_TEST(cancel_source_destructor_fires_callbacks)
         CancelSource src;
         reg = src.token().onCancel([&] { ++count; });
     }
-    NITRO_CHECK_EQ(count, 1);
+    NITRO_CHECK_EQ(count, 0);
     co_return;
+}
+
+/** CancelSource(duration) cancels the token after the given timeout. */
+NITRO_TEST(cancel_source_duration_ctor)
+{
+    using namespace std::chrono_literals;
+    CancelSource src(20ms);
+    auto token = src.token();
+    NITRO_CHECK(!token.isCancelled());
+    co_await Scheduler::current()->sleep_for(40ms);
+    NITRO_CHECK(token.isCancelled());
 }
 
 int main()

@@ -209,7 +209,13 @@ public:
     {
     }
 
-    ~CancelSource() { cancel(); }
+    explicit CancelSource(std::chrono::steady_clock::duration dur, Scheduler * sched = Scheduler::current())
+        : CancelSource(sched)
+    {
+        cancelAfter(dur);
+    }
+
+    ~CancelSource() = default;
 
     CancelToken token() const { return CancelToken(state_); }
 
@@ -226,12 +232,6 @@ public:
             if (auto s = weak.lock())
                 s->cancel();
         });
-    }
-
-    void cancelAfter(double seconds)
-    {
-        cancelAfter(std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(seconds)));
     }
 
 private:
