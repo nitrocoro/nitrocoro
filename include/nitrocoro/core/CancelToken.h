@@ -36,15 +36,14 @@ struct CancelState
 
     struct Callback
     {
-        uint64_t id;
         std::function<void()> fn;
-        Scheduler * sched; // dispatch target; nullptr = call inline
+        Scheduler * sched;                        // dispatch target; nullptr = call inline
+        std::shared_ptr<std::atomic_flag> active; // cleared on Reg destruction
     };
 
     // callbacks protected by mutex (cancel() may be called from any thread)
     std::mutex cbMutex_;
     std::vector<Callback> callbacks_;
-    uint64_t nextId_{ 0 };
 
     bool isCancelled() const noexcept
     {
@@ -66,8 +65,11 @@ struct CancelState
         for (auto & cb : cbs)
         {
             if (cb.sched)
-                cb.sched->dispatch(std::move(cb.fn));
-            else
+                cb.sched->dispatch([fn = std::move(cb.fn), active = cb.active]() mutable {
+                    if (!active->test_and_set())
+                        fn();
+                });
+            else if (!cb.active->test_and_set())
                 cb.fn();
         }
 
@@ -83,30 +85,26 @@ struct CancelState
         }
     }
 
-    uint64_t addCallback(std::function<void()> cb, Scheduler * sched = Scheduler::current())
+    std::shared_ptr<std::atomic_flag> addCallback(std::function<void()> cb, Scheduler * sched = Scheduler::current())
     {
-        std::lock_guard lock(cbMutex_);
-        if (isCancelled())
+        auto active = std::make_shared<std::atomic_flag>();
+        bool cancelled = false;
+        {
+            std::lock_guard lock(cbMutex_);
+            if (isCancelled())
+                cancelled = true;
+            else
+                callbacks_.push_back({ std::move(cb), sched, active });
+        }
+        if (cancelled)
         {
             if (sched)
                 sched->dispatch(std::move(cb));
             else
                 cb();
-            return 0;
+            return nullptr;
         }
-        uint64_t id = ++nextId_;
-        callbacks_.push_back({ id, std::move(cb), sched });
-        return id;
-    }
-
-    void removeCallback(uint64_t id)
-    {
-        if (id == 0)
-            return;
-        std::lock_guard lock(cbMutex_);
-        auto it = std::find_if(callbacks_.begin(), callbacks_.end(), [id](auto & c) { return c.id == id; });
-        if (it != callbacks_.end())
-            callbacks_.erase(it);
+        return active;
     }
 };
 
@@ -114,20 +112,62 @@ struct CancelState
 
 // ─── CancelRegistration ──────────────────────────────────────────────────────
 
+/**
+ * RAII guard that deregisters a cancel callback on destruction.
+ *
+ * Thread-safety:
+ *   CancelRegistration must be destroyed on the same thread that owns the
+ *   callback's captured resources. If destroyed from a different thread while
+ *   the callback is executing (dispatched via a scheduler), the captured
+ *   objects may be destroyed mid-execution, causing undefined behaviour.
+ *
+ *   The typical coroutine pattern — holding Reg as a local variable and
+ *   letting it go out of scope on the registering coroutine's thread — is
+ *   always safe.
+ *
+ * Example (correct):
+ * @code
+ *   Task<> myCoroutine(CancelToken token) {
+ *       SomeResource res;
+ *       // reg is destroyed when leaving this scope, on this coroutine's thread
+ *       auto reg = token.onCancel([&res] { res.cancel(); });
+ *       co_await someAsyncOp();
+ *   } // reg destroyed here — safe
+ * @endcode
+ *
+ * Example (incorrect — do not do this):
+ * @code
+ *   auto reg = token.onCancel([&res] { res.cancel(); });
+ *   std::thread([r = std::move(reg)] {}).detach(); // reg destroyed on another thread — UB
+ *
+ *   // Also incorrect: switching scheduler after registering
+ *   auto reg = token.onCancel([&res] { res.cancel(); });
+ *   co_await otherScheduler->switch_to();           // reg now lives on otherScheduler's thread — UB
+ * @endcode
+ */
+
 class CancelRegistration
 {
 public:
     CancelRegistration() = default;
 
-    CancelRegistration(std::shared_ptr<detail::CancelState> state, uint64_t id)
-        : state_(std::move(state)), id_(id)
+    explicit CancelRegistration(std::shared_ptr<std::atomic_flag> active)
+        : active_(std::move(active))
     {
     }
 
     ~CancelRegistration()
     {
-        if (state_)
-            state_->removeCallback(id_);
+        unregister();
+    }
+
+    void unregister() noexcept
+    {
+        if (active_)
+        {
+            active_->test_and_set();
+            active_.reset();
+        }
     }
 
     CancelRegistration(CancelRegistration &&) noexcept = default;
@@ -136,8 +176,7 @@ public:
     CancelRegistration & operator=(const CancelRegistration &) = delete;
 
 private:
-    std::shared_ptr<detail::CancelState> state_;
-    uint64_t id_{ 0 };
+    std::shared_ptr<std::atomic_flag> active_;
 };
 
 // ─── CancelToken ─────────────────────────────────────────────────────────────
@@ -157,12 +196,15 @@ public:
         return state_ && state_->isCancelled();
     }
 
+    // Registers a callback to be invoked on cancellation on the calling thread.
+    // Returns a CancelRegistration that deregisters the callback on destruction.
+    // The returned CancelRegistration must not be moved to or destroyed on another thread.
+    // See CancelRegistration for thread-safety requirements.
     [[nodiscard]] CancelRegistration onCancel(std::function<void()> cb)
     {
         if (!state_)
             return {};
-        uint64_t id = state_->addCallback(std::move(cb), Scheduler::current());
-        return { state_, id };
+        return CancelRegistration{ state_->addCallback(std::move(cb), Scheduler::current()) };
     }
 
     struct [[nodiscard]] CancelledAwaiter
