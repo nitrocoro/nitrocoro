@@ -155,7 +155,7 @@ NITRO_TEST(pool_acquire_default_timeout)
     NITRO_CHECK_THROWS_AS(co_await pool.acquire(), PgTimeoutError);
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

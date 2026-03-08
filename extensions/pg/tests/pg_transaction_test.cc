@@ -207,7 +207,7 @@ NITRO_TEST(transaction_auto_commit)
     NITRO_CHECK_EQ(std::get<int64_t>(result.get(0, 0)), 1);
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

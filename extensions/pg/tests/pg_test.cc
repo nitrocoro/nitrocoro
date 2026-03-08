@@ -259,7 +259,7 @@ NITRO_TEST(execute_cancel)
     NITRO_CHECK(!conn2->isAlive());
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

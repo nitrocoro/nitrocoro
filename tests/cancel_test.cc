@@ -182,7 +182,7 @@ NITRO_TEST(cancel_token_from_duration)
     NITRO_CHECK(token.isCancelled());
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

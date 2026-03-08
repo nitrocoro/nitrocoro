@@ -24,7 +24,7 @@ NITRO_TEST(test_{{NAME}})
     co_return;
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

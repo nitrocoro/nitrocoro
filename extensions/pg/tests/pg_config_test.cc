@@ -101,7 +101,7 @@ NITRO_TEST(toConnStr_application_name)
     co_return;
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

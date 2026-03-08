@@ -311,7 +311,7 @@ NITRO_TEST(http_without_upgrader)
     co_await server.stop();
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

@@ -95,7 +95,7 @@ NITRO_TEST_EXPECT_FAIL(require_aborts_early)
     co_return;
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

@@ -91,7 +91,7 @@ NITRO_TEST(timeout_tcp_connect_no_cancel)
     // stop_token propagation through the coroutine chain, which is not yet implemented.
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

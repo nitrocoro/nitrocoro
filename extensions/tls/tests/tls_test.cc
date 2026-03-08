@@ -380,7 +380,7 @@ NITRO_TEST(tls_multi_sni)
     NITRO_CHECK(hasB);
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

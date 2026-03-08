@@ -18,6 +18,7 @@
  *       });
  *   }
  *   int main() { return nitrocoro::test::run_all(); }
+ *   int main(int argc, char ** argv) { return nitrocoro::test::run_all(argc, argv); }
  */
 #pragma once
 
@@ -87,10 +88,22 @@ inline std::vector<TestCase> & registry()
     return cases;
 }
 
+inline bool & verbose_mode()
+{
+    static bool v = false;
+    return v;
+}
+
 inline void record_check(TestCtxPtr ctx)
 {
     if (ctx)
         ++ctx->checks;
+}
+
+inline void record_success(const char * file, int line, const char * expr)
+{
+    if (verbose_mode())
+        printf("\x1B[0;32m[OK]\x1B[0m %s:%d: %s\n", file, line, expr);
 }
 
 inline void record_failure(const char * file, int line, const char * expr, TestCtxPtr ctx)
@@ -154,13 +167,55 @@ inline void record_failure_ne(
         ++ctx->failures;
 }
 
-inline int run_all()
+inline int run_all(int argc = 0, char ** argv = nullptr)
 {
+    std::string filter;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string_view arg = argv[i];
+        if (arg == "-n" && i + 1 < argc)
+        {
+            filter = argv[++i];
+        }
+        else if (arg == "-v")
+        {
+            verbose_mode() = true;
+        }
+        else if (arg == "-l")
+        {
+            for (auto & tc : registry())
+                printf("%s\n", tc.name);
+            return 0;
+        }
+        else if (arg == "-h" || arg == "--help")
+        {
+            printf("Usage: %s [-n pattern] [-v] [-l] [-h]\n"
+                   "  -n <pattern>  only run tests whose name contains pattern\n"
+                   "  -v            print passing checks\n"
+                   "  -l            list all tests\n"
+                   "  -h            show this help\n",
+                   argv[0]);
+            return 0;
+        }
+        else
+        {
+            fprintf(stderr, "Unknown argument: %s\n", argv[i]);
+            return 1;
+        }
+    }
+
+    auto matches = [&](const char * name) {
+        return filter.empty() || std::string_view(name).find(filter) != std::string_view::npos;
+    };
+
     int passed = 0, failed = 0;
 
     auto run_tests = [&]() -> Task<> {
         for (auto & tc : registry())
         {
+            if (!matches(tc.name))
+                continue;
             printf("\n\x1B[1;37m--- %s ---\x1B[0m\n", tc.name);
 
             auto done = std::make_shared<Promise<>>(Scheduler::current());
@@ -253,12 +308,14 @@ struct Registrar
 
 // ── CHECK — soft assertion: log failure, continue ─────────────────────────────
 
-#define NITRO_CHECK(expr)                                 \
-    do                                                    \
-    {                                                     \
-        nitrocoro::test::record_check(TEST_CTX);          \
-        if (!(expr))                                      \
-            NITRO_TEST_RECORD_FAILURE__(#expr, TEST_CTX); \
+#define NITRO_CHECK(expr)                                               \
+    do                                                                  \
+    {                                                                   \
+        nitrocoro::test::record_check(TEST_CTX);                        \
+        if (!(expr))                                                    \
+            NITRO_TEST_RECORD_FAILURE__(#expr, TEST_CTX);               \
+        else                                                            \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #expr); \
     } while (0)
 
 #define NITRO_CHECK_EQ(a, b)                                                                      \
@@ -267,6 +324,8 @@ struct Registrar
         nitrocoro::test::record_check(TEST_CTX);                                                  \
         if (!((a) == (b)))                                                                        \
             nitrocoro::test::record_failure_eq(__FILE__, __LINE__, #a " == " #b, a, b, TEST_CTX); \
+        else                                                                                      \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #a " == " #b);                    \
     } while (0)
 
 #define NITRO_CHECK_NE(a, b)                                                                      \
@@ -275,19 +334,23 @@ struct Registrar
         nitrocoro::test::record_check(TEST_CTX);                                                  \
         if (!((a) != (b)))                                                                        \
             nitrocoro::test::record_failure_ne(__FILE__, __LINE__, #a " != " #b, a, b, TEST_CTX); \
+        else                                                                                      \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #a " != " #b);                    \
     } while (0)
 
 // ── REQUIRE — hard assertion: log failure, abort current test (co_return) ─────
 
-#define NITRO_REQUIRE(expr)                               \
-    do                                                    \
-    {                                                     \
-        nitrocoro::test::record_check(TEST_CTX);          \
-        if (!(expr))                                      \
-        {                                                 \
-            NITRO_TEST_RECORD_FAILURE__(#expr, TEST_CTX); \
-            co_return;                                    \
-        }                                                 \
+#define NITRO_REQUIRE(expr)                                             \
+    do                                                                  \
+    {                                                                   \
+        nitrocoro::test::record_check(TEST_CTX);                        \
+        if (!(expr))                                                    \
+        {                                                               \
+            NITRO_TEST_RECORD_FAILURE__(#expr, TEST_CTX);               \
+            co_return;                                                  \
+        }                                                               \
+        else                                                            \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #expr); \
     } while (0)
 
 #define NITRO_REQUIRE_EQ(a, b)                                                                    \
@@ -299,6 +362,8 @@ struct Registrar
             nitrocoro::test::record_failure_eq(__FILE__, __LINE__, #a " == " #b, a, b, TEST_CTX); \
             co_return;                                                                            \
         }                                                                                         \
+        else                                                                                      \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #a " == " #b);                    \
     } while (0)
 
 #define NITRO_REQUIRE_NE(a, b)                                                                    \
@@ -310,19 +375,23 @@ struct Registrar
             nitrocoro::test::record_failure_ne(__FILE__, __LINE__, #a " != " #b, a, b, TEST_CTX); \
             co_return;                                                                            \
         }                                                                                         \
+        else                                                                                      \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #a " != " #b);                    \
     } while (0)
 
 // ── MANDATE — fatal assertion: log failure, exit(1) ───────────────────────────
 
-#define NITRO_MANDATE(expr)                               \
-    do                                                    \
-    {                                                     \
-        nitrocoro::test::record_check(TEST_CTX);          \
-        if (!(expr))                                      \
-        {                                                 \
-            NITRO_TEST_RECORD_FAILURE__(#expr, TEST_CTX); \
-            std::exit(1);                                 \
-        }                                                 \
+#define NITRO_MANDATE(expr)                                             \
+    do                                                                  \
+    {                                                                   \
+        nitrocoro::test::record_check(TEST_CTX);                        \
+        if (!(expr))                                                    \
+        {                                                               \
+            NITRO_TEST_RECORD_FAILURE__(#expr, TEST_CTX);               \
+            std::exit(1);                                               \
+        }                                                               \
+        else                                                            \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #expr); \
     } while (0)
 
 #define NITRO_MANDATE_EQ(a, b)                                                                    \
@@ -334,6 +403,8 @@ struct Registrar
             nitrocoro::test::record_failure_eq(__FILE__, __LINE__, #a " == " #b, a, b, TEST_CTX); \
             std::exit(1);                                                                         \
         }                                                                                         \
+        else                                                                                      \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #a " == " #b);                    \
     } while (0)
 
 #define NITRO_MANDATE_NE(a, b)                                                                    \
@@ -345,6 +416,8 @@ struct Registrar
             nitrocoro::test::record_failure_ne(__FILE__, __LINE__, #a " != " #b, a, b, TEST_CTX); \
             std::exit(1);                                                                         \
         }                                                                                         \
+        else                                                                                      \
+            nitrocoro::test::record_success(__FILE__, __LINE__, #a " != " #b);                    \
     } while (0)
 
 // ── THROWS — assert that an expression throws ─────────────────────────────────

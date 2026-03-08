@@ -210,7 +210,7 @@ NITRO_TEST(mutex_scoped_lock_exclusive)
     NITRO_CHECK_EQ(counter, 10);
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

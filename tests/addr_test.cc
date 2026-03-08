@@ -83,7 +83,7 @@ NITRO_TEST(url_invalid)
     co_return;
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

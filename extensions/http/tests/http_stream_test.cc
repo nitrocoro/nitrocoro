@@ -104,7 +104,7 @@ NITRO_TEST(stream_echo_content_length)
     co_await run_stream_test(port, false, TEST_CTX);
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }

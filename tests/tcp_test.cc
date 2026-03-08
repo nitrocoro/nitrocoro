@@ -204,7 +204,7 @@ NITRO_TEST(tcp_ipv4_loopback_listen)
     co_await server.stop();
 }
 
-int main()
+int main(int argc, char ** argv)
 {
-    return nitrocoro::test::run_all();
+    return nitrocoro::test::run_all(argc, argv);
 }
