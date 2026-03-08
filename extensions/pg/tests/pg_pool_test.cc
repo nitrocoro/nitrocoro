@@ -6,36 +6,20 @@
  * environment variable PG_CONN_STR, e.g.:
  *   PG_CONN_STR="host=localhost dbname=test user=postgres password=secret" ./pg_pool_test
  */
+#include "pg_test_utils.h"
 #include <nitrocoro/core/CancelToken.h>
 #include <nitrocoro/pg/PgConnection.h>
 #include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/pg/PgPool.h>
 #include <nitrocoro/testing/Test.h>
 
-#include <cstdlib>
-
 using namespace nitrocoro;
 using namespace nitrocoro::pg;
-
-static PgPoolConfig makeConfig(size_t maxSize = 2)
-{
-    PgPoolConfig cfg;
-    const char * env = std::getenv("PG_CONN_STR");
-    if (env)
-        cfg.connect = PgConnectConfig::parseConnStr(env);
-    else
-    {
-        cfg.connect.host = "localhost";
-        cfg.connect.dbname = "test";
-        cfg.connect.user = "postgres";
-    }
-    cfg.maxSize = maxSize;
-    return cfg;
-}
+using namespace nitrocoro::pg::test;
 
 NITRO_TEST(pool_acquire)
 {
-    PgPool pool(makeConfig(2));
+    PgPool pool(makePoolConfig(2));
     auto conn = co_await pool.acquire();
     NITRO_CHECK(conn);
     auto result = co_await conn->query("SELECT 'pool' AS src");
@@ -44,7 +28,7 @@ NITRO_TEST(pool_acquire)
 
 NITRO_TEST(pool_reuse)
 {
-    PgPool pool(makeConfig(2));
+    PgPool pool(makePoolConfig(2));
     {
         auto c1 = co_await pool.acquire();
         auto result = co_await c1->query("SELECT 1");
@@ -56,7 +40,7 @@ NITRO_TEST(pool_reuse)
 
 NITRO_TEST(pooled_connection_reset)
 {
-    PgPool pool(makeConfig(1));
+    PgPool pool(makePoolConfig(1));
     auto conn = co_await pool.acquire();
     NITRO_CHECK_EQ(pool.idleCount(), 0);
 
@@ -68,7 +52,7 @@ NITRO_TEST(pooled_connection_reset)
 // acquire all slots, then verify further acquire waits until one is released
 NITRO_TEST(pool_waiter_fifo)
 {
-    PgPool pool(makeConfig(2));
+    PgPool pool(makePoolConfig(2));
     auto c1 = co_await pool.acquire();
     auto c2 = co_await pool.acquire();
 
@@ -102,7 +86,7 @@ NITRO_TEST(pool_waiter_fifo)
 // cancelled waiter is skipped; next waiter receives the connection
 NITRO_TEST(pool_acquire_cancelled_waiter_skipped)
 {
-    PgPool pool(makeConfig(1));
+    PgPool pool(makePoolConfig(1));
     auto c1 = co_await pool.acquire();
 
     Promise<> done;
@@ -136,7 +120,7 @@ NITRO_TEST(pool_acquire_cancelled_waiter_skipped)
 // acquire times out via CancelToken
 NITRO_TEST(pool_acquire_timeout)
 {
-    PgPool pool(makeConfig(1));
+    PgPool pool(makePoolConfig(1));
     auto c1 = co_await pool.acquire();
 
     CancelSource src(Scheduler::current());
@@ -147,7 +131,7 @@ NITRO_TEST(pool_acquire_timeout)
 // acquire times out via connectTimeoutMs config
 NITRO_TEST(pool_acquire_default_timeout)
 {
-    auto cfg = makeConfig(1);
+    auto cfg = makePoolConfig(1);
     cfg.connect.connectTimeoutMs = 1000;
     PgPool pool(cfg);
     auto c1 = co_await pool.acquire(); // exhaust the pool

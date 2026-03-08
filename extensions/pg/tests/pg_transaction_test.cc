@@ -6,42 +6,20 @@
  * environment variable PG_CONN_STR, e.g.:
  *   PG_CONN_STR="host=localhost dbname=test user=postgres password=secret" ./pg_transaction_test
  */
+#include "pg_test_utils.h"
 #include <nitrocoro/pg/PgConnection.h>
 #include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/pg/PgPool.h>
 #include <nitrocoro/pg/PgTransaction.h>
 #include <nitrocoro/testing/Test.h>
 
-#include <cstdlib>
-
 using namespace nitrocoro;
 using namespace nitrocoro::pg;
-
-static std::string connStr()
-{
-    const char * env = std::getenv("PG_CONN_STR");
-    return env ? env : "host=localhost dbname=test user=postgres";
-}
-
-static PgPoolConfig makePoolConfig(size_t maxSize = 1)
-{
-    PgPoolConfig cfg;
-    const char * env = std::getenv("PG_CONN_STR");
-    if (env)
-        cfg.connect = PgConnectConfig::parseConnStr(env);
-    else
-    {
-        cfg.connect.host = "localhost";
-        cfg.connect.dbname = "test";
-        cfg.connect.user = "postgres";
-    }
-    cfg.maxSize = maxSize;
-    return cfg;
-}
+using namespace nitrocoro::pg::test;
 
 NITRO_TEST(transaction_raii_rollback)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     co_await (co_await pool.acquire())->execute("CREATE TEMP TABLE tx_raii_test (v INT)");
     {
         auto tx = co_await pool.newTransaction();
@@ -55,7 +33,7 @@ NITRO_TEST(transaction_raii_rollback)
 
 NITRO_TEST(transaction_commit)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     co_await (co_await pool.acquire())->execute("CREATE TEMP TABLE tx_commit_test (v INT)");
     {
         auto tx = co_await pool.newTransaction();
@@ -70,7 +48,7 @@ NITRO_TEST(transaction_commit)
 
 NITRO_TEST(transaction_rollback)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     co_await (co_await pool.acquire())->execute("CREATE TEMP TABLE tx_rollback_test (v INT)");
     {
         auto tx = co_await pool.newTransaction();
@@ -84,7 +62,7 @@ NITRO_TEST(transaction_rollback)
 
 NITRO_TEST(transaction_query)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     co_await (co_await pool.acquire())->execute("CREATE TEMP TABLE tx_query_test (v INT)");
     {
         auto tx = co_await pool.newTransaction();
@@ -99,7 +77,7 @@ NITRO_TEST(transaction_query)
 
 NITRO_TEST(transaction_pool_return)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     {
         auto tx = co_await pool.newTransaction();
         NITRO_CHECK_EQ(pool.idleCount(), 0);
@@ -167,7 +145,7 @@ NITRO_TEST(transaction_release_before_commit)
 // the released connection is still automatically recycled to the pool when destroyed.
 NITRO_TEST(transaction_release_pooled_recycle)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     {
         auto tx = co_await pool.newTransaction();
         co_await tx->commit();
@@ -181,7 +159,7 @@ NITRO_TEST(transaction_release_pooled_recycle)
 // Verifies that after release() the destructor does not spawn an extra rollback.
 NITRO_TEST(transaction_release_no_extra_rollback)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     {
         auto tx = co_await pool.newTransaction();
         co_await tx->commit();
@@ -194,7 +172,7 @@ NITRO_TEST(transaction_release_no_extra_rollback)
 
 NITRO_TEST(transaction_auto_commit)
 {
-    PgPool pool(makePoolConfig());
+    PgPool pool(makePoolConfig(1));
     co_await (co_await pool.acquire())->execute("CREATE TEMP TABLE tx_autocommit_test (v INT)");
     {
         auto tx = co_await pool.newTransaction();

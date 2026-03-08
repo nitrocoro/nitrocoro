@@ -6,33 +6,15 @@
  * environment variable PG_CONN_STR, e.g.:
  *   PG_CONN_STR="host=localhost dbname=test user=postgres password=secret" ./pg_test
  */
+#include "pg_test_utils.h"
 #include <nitrocoro/core/CancelToken.h>
 #include <nitrocoro/pg/PgConnection.h>
 #include <nitrocoro/pg/PgException.h>
 #include <nitrocoro/testing/Test.h>
 
-#include <cstdlib>
-
 using namespace nitrocoro;
 using namespace nitrocoro::pg;
-
-static PgConnectConfig baseConfig()
-{
-    const char * env = std::getenv("PG_CONN_STR");
-    if (env)
-        return PgConnectConfig::parseConnStr(env);
-    PgConnectConfig cfg;
-    cfg.host = "localhost";
-    cfg.dbname = "test";
-    cfg.user = "postgres";
-    return cfg;
-}
-
-static std::string connStr()
-{
-    const char * env = std::getenv("PG_CONN_STR");
-    return env ? env : "host=localhost dbname=test user=postgres";
-}
+using namespace nitrocoro::pg::test;
 
 NITRO_TEST(connect)
 {
