@@ -17,6 +17,18 @@ namespace nitrocoro::pg
 
 using nitrocoro::io::Channel;
 
+struct PgConnectionImpl::ConnectionContext
+{
+    using ResultPromise = Promise<std::shared_ptr<PgResultWrapper>>;
+
+    std::shared_ptr<PgConnWrapper> pgConn;
+    std::unique_ptr<io::Channel> channel;
+    bool broken{ false };
+    std::weak_ptr<ResultPromise> weakPromise;
+    std::function<void(std::string, std::string, int)> notifyHandler;
+    std::function<void()> disconnectHandler;
+};
+
 std::string PgConnectConfig::toConnStr() const
 {
     std::string s;
@@ -125,10 +137,24 @@ struct PgConnectionImpl::PgConnWrapper
     }
 };
 
-PgConnectionImpl::PgConnectionImpl(std::shared_ptr<PgConnWrapper> conn, std::unique_ptr<Channel> channel)
-    : pgConn_(std::move(conn))
-    , channel_(std::move(channel))
+PgConnectionImpl::PgConnectionImpl(std::shared_ptr<ConnectionContext> ctx)
+    : ctx_(std::move(ctx))
 {
+    ctx_->channel->scheduler()->spawn([ctx = ctx_]() -> Task<> {
+        co_await readLoop(ctx);
+    });
+}
+
+PgConnectionImpl::~PgConnectionImpl()
+{
+    if (!ctx_)
+        return;
+
+    auto * sched = ctx_->channel->scheduler();
+    sched->dispatch([ctx = std::move(ctx_)] {
+        ctx->channel->cancelAll();
+        ctx->channel->disableAll();
+    });
 }
 
 Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(const PgConnectConfig & config, Scheduler * scheduler)
@@ -165,11 +191,10 @@ Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string co
     // auto un-reg when leaving scope
     auto reg = cancelToken.onCancel([ch = channel.get()] { ch->cancelAll(); });
 
-    auto connectResult = co_await channel->perform([&pgConn, &cancelToken](int, Channel * ch) -> Channel::IoStatus {
+    auto connectResult = co_await channel->perform([&](int, Channel * ch) -> Channel::IoStatus {
         if (cancelToken.isCancelled())
             return Channel::IoStatus::Error;
         PostgresPollingStatusType s = PQconnectPoll(pgConn->raw);
-        NITRO_TRACE("PgConnection: PQconnectPoll=%d", (int)s);
         if (s == PGRES_POLLING_FAILED)
             return Channel::IoStatus::Error;
         if (s == PGRES_POLLING_WRITING)
@@ -191,28 +216,105 @@ Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(std::string co
     NITRO_TRACE("PgConnection: connected (fd=%d)", PQsocket(pgConn->raw));
     if (PQsetnonblocking(pgConn->raw, 1) != 0)
         throw PgConnectionError("PQsetnonblocking: " + std::string(PQerrorMessage(pgConn->raw)));
-    co_return std::make_unique<PgConnectionImpl>(std::move(pgConn), std::move(channel));
+    co_return std::make_unique<PgConnectionImpl>(std::make_shared<ConnectionContext>(ConnectionContext{
+        .pgConn = std::move(pgConn),
+        .channel = std::move(channel),
+    }));
+}
+
+struct PGnotifyDeleter
+{
+    void operator()(PGnotify * p) const { PQfreemem(p); }
+};
+
+Task<> PgConnectionImpl::readLoop(std::shared_ptr<ConnectionContext> ctx)
+{
+    while (true)
+    {
+        auto r = co_await ctx->channel->performRead([&](int, Channel *) -> Channel::IoStatus {
+            if (!PQconsumeInput(ctx->pgConn->raw))
+                return Channel::IoStatus::Error;
+
+            while (auto n = std::unique_ptr<PGnotify, PGnotifyDeleter>(PQnotifies(ctx->pgConn->raw)))
+            {
+                if (ctx->notifyHandler)
+                    ctx->notifyHandler({ n->relname }, { n->extra }, n->be_pid);
+            }
+
+            if (PQisBusy(ctx->pgConn->raw))
+                return Channel::IoStatus::NeedRead;
+
+            int cnt = 0;
+            while (PGresult * raw = PQgetResult(ctx->pgConn->raw))
+            {
+                auto res = std::make_shared<PgResultWrapper>(raw);
+                if (++cnt > 1)
+                {
+                    // TODO
+                    NITRO_ERROR("PgConnection: drop extra result status=%s rows=%d",
+                                PQresStatus(PQresultStatus(res->raw)),
+                                PQntuples(res->raw));
+                    continue;
+                }
+                if (auto p = ctx->weakPromise.lock())
+                {
+                    p->set_value(std::move(res));
+                }
+                else
+                {
+                    NITRO_ERROR("Consume ok but no promise waiting");
+                }
+            }
+            return Channel::IoStatus::NeedRead;
+        });
+
+        NITRO_TRACE("read loop quit");
+        if (r == Channel::IoResult::Canceled)
+        {
+            ctx->broken = true;
+            if (auto p = ctx->weakPromise.lock())
+            {
+                p->set_exception(std::make_exception_ptr(
+                    PgCancelledError("PgConnection: query canceled (read)")));
+            }
+            co_return;
+        }
+        if (r == Channel::IoResult::Error || r == Channel::IoResult::Eof)
+        {
+            ctx->broken = true;
+            if (auto p = ctx->weakPromise.lock())
+            {
+                p->set_exception(std::make_exception_ptr(
+                    PgConnectionError("PQconsumeInput: " + std::string(PQerrorMessage(ctx->pgConn->raw)))));
+            }
+            if (ctx->disconnectHandler)
+                ctx->disconnectHandler();
+            co_return;
+        }
+
+        // won't reach here
+    }
 }
 
 Scheduler * PgConnectionImpl::scheduler() const
 {
-    return channel_->scheduler();
+    return ctx_->channel->scheduler();
 }
 
 bool PgConnectionImpl::isAlive() const
 {
-    return !broken_ && PQstatus(pgConn_->raw) == CONNECTION_OK;
+    return !ctx_->broken && PQstatus(ctx_->pgConn->raw) == CONNECTION_OK;
 }
 
 Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vector<PgValue> params, CancelToken cancelToken)
 {
-    if (!pgConn_)
+    if (!ctx_->pgConn)
         throw PgConnectionError("PgConnection: operation on empty connection");
 
-    co_await channel_->scheduler()->switch_to();
+    co_await ctx_->channel->scheduler()->switch_to();
     if (cancelToken.isCancelled())
         throw PgCancelledError("PgConnection: query cancelled");
-    auto reg = cancelToken.onCancel([ch = channel_.get()] {
+    auto reg = cancelToken.onCancel([ch = ctx_->channel.get()] {
         ch->cancelAll();
     });
 
@@ -272,8 +374,11 @@ Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vecto
             v);
     }
 
+    auto resultPromise = std::make_shared<ConnectionContext::ResultPromise>();
+    ctx_->weakPromise = resultPromise;
+
     std::string sqlStr(sql);
-    int ok = PQsendQueryParams(pgConn_->raw,
+    int ok = PQsendQueryParams(ctx_->pgConn->raw,
                                sqlStr.c_str(),
                                static_cast<int>(params.size()),
                                nullptr,
@@ -283,13 +388,12 @@ Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vecto
                                0);
     if (!ok)
     {
-        broken_ = true;
-        throw PgConnectionError(std::string("PQsendQueryParams: ") + PQerrorMessage(pgConn_->raw));
+        ctx_->broken = true;
+        throw PgConnectionError(std::string("PQsendQueryParams: ") + PQerrorMessage(ctx_->pgConn->raw));
     }
 
-    auto flushResult = co_await channel_->performWrite([this](int, Channel * c) -> Channel::IoStatus {
-        int r = PQflush(pgConn_->raw);
-        NITRO_TRACE("PgConnection: PQflush=%d", r);
+    auto flushResult = co_await ctx_->channel->performWrite([&](int, Channel * c) -> Channel::IoStatus {
+        int r = PQflush(ctx_->pgConn->raw);
         if (r == 0)
         {
             c->disableWriting();
@@ -304,56 +408,28 @@ Task<PgResult> PgConnectionImpl::sendAndReceive(std::string_view sql, std::vecto
     });
     if (flushResult == Channel::IoResult::Error)
     {
-        broken_ = true;
-        throw PgConnectionError(std::string("PQflush: ") + PQerrorMessage(pgConn_->raw));
+        ctx_->broken = true;
+        throw PgConnectionError(std::string("PQflush: ") + PQerrorMessage(ctx_->pgConn->raw));
     }
     if (flushResult != Channel::IoResult::Success)
     {
-        broken_ = true;
+        ctx_->broken = true;
         throw PgCancelledError("PgConnection: query canceled (flush)");
     }
 
     if (cancelToken.isCancelled())
     {
-        broken_ = true;
+        ctx_->broken = true;
         throw PgCancelledError("PgConnection: query canceled (read)");
     }
 
-    std::shared_ptr<PgResultWrapper> res;
-    auto readResult = co_await channel_->performRead([this, &res](int, Channel *) -> Channel::IoStatus {
-        if (!PQconsumeInput(pgConn_->raw))
-            return Channel::IoStatus::Error;
-        NITRO_TRACE("PgConnection: PQisBusy=%d", PQisBusy(pgConn_->raw));
-        if (PQisBusy(pgConn_->raw))
-            return Channel::IoStatus::NeedRead;
-        while (PGresult * r = PQgetResult(pgConn_->raw))
-        {
-            if (res)
-            {
-                // TODO
-                NITRO_TRACE("PgConnection: dropping extra result status=%s rows=%d",
-                            PQresStatus(PQresultStatus(res->raw)),
-                            PQntuples(res->raw));
-            }
-            res = std::make_shared<PgResultWrapper>(r);
-        }
-        return Channel::IoStatus::Success;
-    });
-    if (readResult == Channel::IoResult::Error)
-    {
-        broken_ = true;
-        throw PgConnectionError(std::string("PQconsumeInput: ") + PQerrorMessage(pgConn_->raw));
-    }
-    if (readResult != Channel::IoResult::Success)
-    {
-        broken_ = true;
-        throw PgCancelledError("PgConnection: query canceled (read)");
-    }
-    NITRO_TRACE("PgConnection: result received, res=%p", (void *)res.get());
+    auto res = co_await resultPromise->get_future().get();
+    reg.unregister(); // prevent cancel
+    resultPromise.reset();
 
     if (!res)
     {
-        broken_ = true;
+        ctx_->broken = true;
         throw PgConnectionError("PgConnection: no result returned");
     }
 

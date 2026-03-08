@@ -53,6 +53,12 @@ NITRO_TEST(simple_query)
     NITRO_CHECK(std::get<std::string>(result.get(0, 1)) == "hello");
 }
 
+NITRO_TEST(multi_query)
+{
+    auto conn = co_await PgConnection::connect(connStr());
+    NITRO_CHECK_THROWS_AS(co_await conn->query("SELECT 1; select 2;"), PgQueryError);
+}
+
 NITRO_TEST(execute)
 {
     auto conn = co_await PgConnection::connect(connStr());
@@ -239,18 +245,18 @@ NITRO_TEST(execute_cancel)
 {
     // pre-cancelled: throws immediately without sending request
     auto conn1 = co_await PgConnection::connect(connStr());
-    CancelSource pre;
-    pre.cancel();
-    NITRO_CHECK_THROWS_AS(co_await conn1->execute("SELECT 1", {}, pre.token()), PgCancelledError);
+    CancelSource source1;
+    source1.cancel();
+    NITRO_CHECK_THROWS_AS(co_await conn1->execute("SELECT 1", {}, source1.token()), PgCancelledError);
 
     // cancelled during execution
     auto conn2 = co_await PgConnection::connect(connStr());
-    CancelSource mid;
-    mid.cancelAfter(std::chrono::milliseconds(10));
-    NITRO_CHECK_THROWS_AS(co_await conn2->execute("SELECT pg_sleep(10)", {}, mid.token()), PgCancelledError);
+    CancelSource source2;
+    source2.cancelAfter(std::chrono::milliseconds(10));
+    NITRO_CHECK_THROWS_AS(co_await conn2->execute("SELECT pg_sleep(10)", {}, source2.token()), PgCancelledError);
 
-    // TODO: mark this connection broken after cancelled
-    NITRO_CHECK_THROWS(co_await conn2->execute("SELECT 1", {}, mid.token()));
+    // connection marked broken after cancelled
+    NITRO_CHECK(!conn2->isAlive());
 }
 
 int main()
