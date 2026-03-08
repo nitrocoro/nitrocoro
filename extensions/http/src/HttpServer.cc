@@ -6,6 +6,7 @@
 
 #include "HttpContext.h"
 #include <nitrocoro/core/Future.h>
+#include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/utils/Debug.h>
@@ -26,6 +27,11 @@ HttpServer::HttpServer(uint16_t port, Scheduler * scheduler)
 void HttpServer::setStreamUpgrader(StreamUpgrader upgrader)
 {
     upgrader_ = std::move(upgrader);
+}
+
+void HttpServer::setRequestUpgrader(RequestUpgrader upgrader)
+{
+    requestUpgrader_ = std::move(upgrader);
 }
 
 void HttpServer::route(const std::string & method, const std::string & path, Handler handler)
@@ -102,6 +108,13 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         HttpOutgoingStream<HttpResponse> response(stream, std::move(finishedPromise), std::move(prevFuture));
         prevFuture = std::move(finishedFuture);
         response.setCloseConnection(!keepAlive);
+
+        if (requestUpgrader_ && !request.getHeader(HttpHeader::Name::Upgrade_L).empty())
+        {
+            bool taken = co_await requestUpgrader_(request, stream);
+            if (taken)
+                co_return;
+        }
 
         auto key = std::make_pair(std::string{ request.method() }, std::string{ request.path() });
         auto it = routes_.find(key);

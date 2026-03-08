@@ -22,12 +22,16 @@ class HttpServer
 public:
     using Handler = std::function<Task<>(HttpIncomingStream<HttpRequest> &, HttpOutgoingStream<HttpResponse> &)>;
     using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr)>;
+    // RequestUpgrader: called when request has "Connection: Upgrade".
+    // Receives the request and the raw stream; returns true if the connection was taken over.
+    using RequestUpgrader = std::function<Task<bool>(HttpIncomingStream<HttpRequest> &, io::StreamPtr)>;
 
     explicit HttpServer(uint16_t port, Scheduler * scheduler = Scheduler::current());
 
     uint16_t listeningPort() const { return port_; }
 
     void setStreamUpgrader(StreamUpgrader upgrader);
+    void setRequestUpgrader(RequestUpgrader upgrader);
     void route(const std::string & method, const std::string & path, Handler handler);
     Task<> start();
     Task<> stop();
@@ -38,6 +42,7 @@ private:
     uint16_t port_;
     Scheduler * scheduler_;
     StreamUpgrader upgrader_;
+    RequestUpgrader requestUpgrader_;
     std::map<std::pair<std::string, std::string>, Handler> routes_;
     std::unique_ptr<net::TcpServer> server_;
 };
