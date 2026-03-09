@@ -74,11 +74,12 @@ cmake .. && make
 ```cpp
 #include <nitrocoro/http/HttpServer.h>
 using namespace nitrocoro;
+using namespace nitrocoro::http;
 
 Task<> run()
 {
     HttpServer server(8080);
-    server.route("GET", "/", [](HttpRequest & req, HttpResponse & resp) -> Task<> {
+    server.route("/", {"GET"}, [](HttpIncomingStream<HttpRequest> && req, HttpOutgoingStream<HttpResponse> && resp) -> Task<> {
         co_await resp.end("<h1>Hello, NitroCoro!</h1>");
     });
     co_await server.start();
