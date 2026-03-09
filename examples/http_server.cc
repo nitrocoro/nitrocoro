@@ -16,20 +16,20 @@ Task<> server_main(uint16_t port)
 {
     HttpServer server(port);
 
-    server.route("GET", "/", [](auto & req, auto & resp) -> Task<> {
+    server.route("GET", "/", [](auto && req, auto && resp) -> Task<> {
         resp.setStatus(StatusCode::k200OK);
         resp.setHeader("Content-Type", "text/html; charset=utf-8");
         co_await resp.end("<h1>Hello, World!</h1>");
     });
 
-    server.route("GET", "/large", [](HttpIncomingStream<HttpRequest> & req, HttpOutgoingStream<HttpResponse> & resp) -> Task<> {
+    server.route("GET", "/large", [](HttpIncomingStream<HttpRequest> && req, HttpOutgoingStream<HttpResponse> && resp) -> Task<> {
         resp.setStatus(StatusCode::k200OK);
         resp.setHeader("Content-Type", "text/html; charset=utf-8");
         std::string largeBody(1024 * 1024, 'a');
         co_await resp.end(largeBody);
     });
 
-    server.route("GET", "/hello", [](HttpIncomingStream<HttpRequest> & req, HttpOutgoingStream<HttpResponse> & resp) -> Task<> {
+    server.route("GET", "/hello", [](HttpIncomingStream<HttpRequest> && req, HttpOutgoingStream<HttpResponse> && resp) -> Task<> {
         auto name = req.getQuery("name");
         std::string body = "Hello, ";
         body += name.empty() ? "Guest" : name;
@@ -40,7 +40,7 @@ Task<> server_main(uint16_t port)
         co_await resp.end(body);
     });
 
-    server.route("GET", "/sleep", [](HttpIncomingStream<HttpRequest> & req, HttpOutgoingStream<HttpResponse> & resp) -> Task<> {
+    server.route("GET", "/sleep", [](HttpIncomingStream<HttpRequest> && req, HttpOutgoingStream<HttpResponse> && resp) -> Task<> {
         utils::StringBuffer bodyBuf;
         co_await req.readToEnd(bodyBuf);
         co_await sleep(std::chrono::seconds(3));
@@ -49,7 +49,7 @@ Task<> server_main(uint16_t port)
         co_await resp.end("wakeup after 3 seconds");
     });
 
-    server.route("POST", "/echo", [](HttpIncomingStream<HttpRequest> & req, HttpOutgoingStream<HttpResponse> & resp) -> Task<> {
+    server.route("POST", "/echo", [](HttpIncomingStream<HttpRequest> && req, HttpOutgoingStream<HttpResponse> && resp) -> Task<> {
         utils::StringBuffer bodyBuf;
         co_await req.readToEnd(bodyBuf);
         resp.setStatus(StatusCode::k200OK);

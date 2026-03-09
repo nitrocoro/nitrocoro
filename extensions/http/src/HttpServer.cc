@@ -8,6 +8,7 @@
 #include <nitrocoro/core/Future.h>
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/http/HttpMessage.h>
+#include <nitrocoro/http/HttpRouter.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/utils/Debug.h>
 
@@ -15,7 +16,12 @@ namespace nitrocoro::http
 {
 
 HttpServer::HttpServer(uint16_t port, Scheduler * scheduler)
-    : port_(port), scheduler_(scheduler)
+    : HttpServer(port, std::make_shared<HttpRouter>(), scheduler)
+{
+}
+
+HttpServer::HttpServer(uint16_t port, std::shared_ptr<HttpRouter> router, Scheduler * scheduler)
+    : port_(port), scheduler_(scheduler), router_(std::move(router))
 {
     server_ = std::make_unique<net::TcpServer>(port_, scheduler_);
     if (port_ == 0)
@@ -36,7 +42,7 @@ void HttpServer::setRequestUpgrader(RequestUpgrader upgrader)
 
 void HttpServer::route(const std::string & method, const std::string & path, Handler handler)
 {
-    routes_[{ method, path }] = std::move(handler);
+    router_->route(method, path, std::move(handler));
 }
 
 Task<> HttpServer::start()
@@ -116,17 +122,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
                 co_return;
         }
 
-        auto key = std::make_pair(std::string{ request.method() }, std::string{ request.path() });
-        auto it = routes_.find(key);
-        if (it != routes_.end())
-        {
-            co_await it->second(request, response);
-        }
-        else
-        {
-            response.setStatus(StatusCode::k404NotFound);
-            co_await response.end("Not Found");
-        }
+        co_await router_->dispatch(std::move(request), std::move(response));
 
         if (!bodyReader->isComplete())
             co_await bodyReader->drain();
