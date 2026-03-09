@@ -156,17 +156,7 @@ PgConnectionImpl::PgConnectionImpl(std::shared_ptr<ConnectionContext> ctx)
     });
 }
 
-PgConnectionImpl::~PgConnectionImpl()
-{
-    if (!ctx_)
-        return;
-
-    auto * sched = ctx_->channel->scheduler();
-    sched->dispatch([ctx = std::move(ctx_)] {
-        ctx->channel->cancelAll();
-        ctx->channel->disableAll();
-    });
-}
+PgConnectionImpl::~PgConnectionImpl() = default;
 
 Task<std::unique_ptr<PgConnectionImpl>> PgConnectionImpl::connect(const PgConnectConfig & config, Scheduler * scheduler)
 {

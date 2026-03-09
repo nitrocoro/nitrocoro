@@ -73,7 +73,7 @@ void PoolState::returnConnection(const std::weak_ptr<PoolState> & weakState,
     if (!state)
         return;
 
-    state->scheduler->spawn([state, conn = std::move(conn)]() mutable -> Task<> {
+    state->scheduler->dispatch([state, conn = std::move(conn)]() mutable {
         if (!conn->isAlive())
         {
             NITRO_DEBUG("PgPool: connection dead, discarding");
@@ -84,7 +84,6 @@ void PoolState::returnConnection(const std::weak_ptr<PoolState> & weakState,
             state->idle.push(std::move(conn));
         }
         dispatch(state);
-        co_return;
     });
 }
 
@@ -93,10 +92,9 @@ void PoolState::detachConnection(const std::weak_ptr<PoolState> & weakState) noe
     auto state = weakState.lock();
     if (!state)
         return;
-    state->scheduler->spawn([state]() -> Task<> {
+    state->scheduler->dispatch([state]() {
         --state->totalCount;
         dispatch(state);
-        co_return;
     });
 }
 
