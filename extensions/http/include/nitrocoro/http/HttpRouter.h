@@ -119,12 +119,12 @@ private:
 
     struct RouteNode
     {
+        using NodeMap = std::map<std::string, std::unique_ptr<RouteNode>, std::less<>>;
+
         MethodMap handlers;
-        std::map<std::string, std::unique_ptr<RouteNode>, std::less<>> children; // static segments
-        std::unique_ptr<RouteNode> paramChild;                                   // :name
-        std::string paramName;
-        std::unique_ptr<RouteNode> wildcardChild; // *name
-        std::string wildcardName;
+        NodeMap children;         // static segments
+        NodeMap paramChildren;    // key = param name (:id → node)
+        NodeMap wildcardChildren; // key = wildcard name (*path → node)
     };
 
     struct Routes
@@ -136,7 +136,7 @@ private:
 
     void addRouteImpl(const std::string & path, const HttpMethods & methods, HttpHandlerPtr handler);
 
-    static void insertRadix(RouteNode & node, std::string_view path, const HttpMethods & methods, HttpHandlerPtr handler);
+    static void insertRadix(RouteNode & node, std::string_view path, const HttpMethods & methods, const HttpHandlerPtr & handler);
     static const MethodMap * matchRadix(const RouteNode & node, std::string_view path, Params & params, size_t depth = 0);
 
     Routes routes_;

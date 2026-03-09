@@ -338,6 +338,38 @@ NITRO_TEST(router_addregex_merges_methods)
     co_return;
 }
 
+// wildcard route: wrong method → 405
+NITRO_TEST(router_wildcard_method_not_allowed)
+{
+    HttpRouter router;
+    router.addRoute("/files/*path", { "GET" }, dummyHandler());
+
+    auto result = match(router, "POST", "/files/a/b/c.txt");
+    NITRO_CHECK(result.handler == nullptr);
+    NITRO_CHECK(result.reason == HttpRouter::RouteResult::Reason::MethodNotAllowed);
+    co_return;
+}
+
+// two param routes under same parent with different param names → both resolve correctly
+NITRO_TEST(router_param_name_no_collision)
+{
+    HttpRouter router;
+    router.addRoute("/users/:id", { "GET" }, dummyHandler());
+    router.addRoute("/users/:uid/posts/:pid", { "GET" }, dummyHandler());
+
+    auto r1 = match(router, "GET", "/users/42");
+    NITRO_CHECK(r1.reason == HttpRouter::RouteResult::Reason::Ok);
+    NITRO_CHECK(r1.params.count("id"));
+    NITRO_CHECK_EQ(r1.params.at("id"), "42");
+
+    auto r2 = match(router, "GET", "/users/1/posts/99");
+    NITRO_CHECK(r2.reason == HttpRouter::RouteResult::Reason::Ok);
+    NITRO_CHECK(r2.params.count("uid"));
+    NITRO_CHECK_EQ(r2.params.at("uid"), "1");
+    NITRO_CHECK_EQ(r2.params.at("pid"), "99");
+    co_return;
+}
+
 int main(int argc, char ** argv)
 {
     return nitrocoro::test::run_all(argc, argv);

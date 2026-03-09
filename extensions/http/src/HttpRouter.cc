@@ -21,7 +21,7 @@ static std::string_view nextSegment(std::string_view path, size_t & pos)
     return path.substr(start, pos - start);
 }
 
-void HttpRouter::insertRadix(RouteNode & node, std::string_view path, const HttpMethods & methods, HttpHandlerPtr handler)
+void HttpRouter::insertRadix(RouteNode & node, std::string_view path, const HttpMethods & methods, const HttpHandlerPtr & handler)
 {
     size_t pos = 0;
     RouteNode * cur = &node;
@@ -38,18 +38,20 @@ void HttpRouter::insertRadix(RouteNode & node, std::string_view path, const Http
 
         if (seg[0] == ':')
         {
-            if (!cur->paramChild)
-                cur->paramChild = std::make_unique<RouteNode>();
-            cur->paramName = std::string(seg.substr(1));
-            cur = cur->paramChild.get();
+            std::string name(seg.substr(1));
+            auto & child = cur->paramChildren[name];
+            if (!child)
+                child = std::make_unique<RouteNode>();
+            cur = child.get();
         }
         else if (seg[0] == '*')
         {
-            if (!cur->wildcardChild)
-                cur->wildcardChild = std::make_unique<RouteNode>();
-            cur->wildcardName = std::string(seg.substr(1));
+            std::string name(seg.substr(1));
+            auto & child = cur->wildcardChildren[name];
+            if (!child)
+                child = std::make_unique<RouteNode>();
             for (const auto & m : methods.methods_)
-                cur->wildcardChild->handlers[m] = handler;
+                child->handlers[m] = handler;
             return;
         }
         else
@@ -72,38 +74,38 @@ const HttpRouter::MethodMap * HttpRouter::matchRadix(const RouteNode & node, std
     size_t pos = 0;
     const RouteNode * cur = &node;
 
-    while (true)
+    std::string_view seg = nextSegment(path, pos);
+    if (seg.empty())
+        return cur->handlers.empty() ? nullptr : &cur->handlers;
+
+    // 1. static
+    auto it = cur->children.find(seg);
+    if (it != cur->children.end())
     {
-        std::string_view seg = nextSegment(path, pos);
-        if (seg.empty())
-            return cur->handlers.empty() ? nullptr : &cur->handlers;
-
-        // 1. static
-        auto it = cur->children.find(seg);
-        if (it != cur->children.end())
-        {
-            if (auto * mm = matchRadix(*it->second, path.substr(pos), params, depth + 1))
-                return mm;
-        }
-
-        // 2. param
-        if (cur->paramChild)
-        {
-            params[cur->paramName] = std::string(seg);
-            if (auto * mm = matchRadix(*cur->paramChild, path.substr(pos), params, depth + 1))
-                return mm;
-            params.erase(cur->paramName);
-        }
-
-        // 3. wildcard — consumes the rest
-        if (cur->wildcardChild && !cur->wildcardChild->handlers.empty())
-        {
-            params[cur->wildcardName] = std::string(path.substr(pos - seg.size()));
-            return &cur->wildcardChild->handlers;
-        }
-
-        return nullptr;
+        if (auto * methodMap = matchRadix(*it->second, path.substr(pos), params, depth + 1))
+            return methodMap;
     }
+
+    // 2. param — try all named param branches
+    for (const auto & [pname, pnode] : cur->paramChildren)
+    {
+        params[pname] = std::string(seg);
+        if (auto * methodMap = matchRadix(*pnode, path.substr(pos), params, depth + 1))
+            return methodMap;
+        params.erase(pname);
+    }
+
+    // 3. wildcard — try all named wildcard branches
+    for (const auto & [wname, wnode] : cur->wildcardChildren)
+    {
+        if (!wnode->handlers.empty())
+        {
+            params[wname] = std::string(path.substr(pos - seg.size()));
+            return &wnode->handlers;
+        }
+    }
+
+    return nullptr;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -137,9 +139,9 @@ HttpRouter::RouteResult HttpRouter::route(const std::string & method, const std:
     if (path.size() > kMaxPathLength)
         return {};
 
-    auto lookupMethod = [&](const MethodMap & mm) -> RouteResult {
-        auto it = mm.find(method);
-        if (it != mm.end())
+    auto lookupMethod = [&](const MethodMap & methodMap) -> RouteResult {
+        auto it = methodMap.find(method);
+        if (it != methodMap.end())
             return { it->second, {}, RouteResult::Reason::Ok };
         return { nullptr, {}, RouteResult::Reason::MethodNotAllowed };
     };
@@ -151,24 +153,24 @@ HttpRouter::RouteResult HttpRouter::route(const std::string & method, const std:
 
     // 2. radix (param / wildcard)
     Params params;
-    if (const MethodMap * mm = matchRadix(routes_.radixRoot, path, params))
+    if (const MethodMap * methodMap = matchRadix(routes_.radixRoot, path, params))
     {
-        auto r = lookupMethod(*mm);
+        auto r = lookupMethod(*methodMap);
         r.params = std::move(params);
         return r;
     }
 
     // 3. regex
-    for (const auto & [pat, re, mm] : routes_.regexRoutes)
+    for (const auto & [pat, re, methodMap] : routes_.regexRoutes)
     {
         std::smatch m;
         if (std::regex_match(path, m, re))
         {
-            Params rparams;
+            Params regexParams;
             for (size_t i = 1; i < m.size(); ++i)
-                rparams["$" + std::to_string(i)] = m[i].str();
-            auto r = lookupMethod(mm);
-            r.params = std::move(rparams);
+                regexParams["$" + std::to_string(i)] = m[i].str();
+            auto r = lookupMethod(methodMap);
+            r.params = std::move(regexParams);
             return r;
         }
     }
