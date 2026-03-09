@@ -112,9 +112,13 @@ void HttpRouter::addRouteImpl(const std::string & method, const std::string & pa
     bool hasWild = path.find('*') != std::string::npos;
 
     if (!hasParam && !hasWild)
-        mr.exact[path] = handler;
-
-    insertRadix(mr.radixRoot, path, std::move(handler));
+    {
+        mr.exact[path] = std::move(handler);
+    }
+    else
+    {
+        insertRadix(mr.radixRoot, path, std::move(handler));
+    }
 }
 
 HttpRouter::RouteResult HttpRouter::route(const std::string & method, const std::string & path) const
