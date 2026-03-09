@@ -108,8 +108,16 @@ void HttpRouter::addRouteImpl(const std::string & method, const std::string & pa
 {
     auto & mr = routes_[method];
 
-    bool hasParam = path.find(':') != std::string::npos;
-    bool hasWild = path.find('*') != std::string::npos;
+    auto isParamOrWild = [](std::string_view p, char c) {
+        if (!p.empty() && p[0] == c)
+            return true;
+        for (size_t i = 1; i < p.size(); ++i)
+            if (p[i] == c && p[i - 1] == '/')
+                return true;
+        return false;
+    };
+    bool hasParam = isParamOrWild(path, ':');
+    bool hasWild = isParamOrWild(path, '*');
 
     if (!hasParam && !hasWild)
     {
