@@ -5,6 +5,7 @@
 #include "HttpParser.h"
 
 #include <nitrocoro/http/HttpHeader.h>
+#include <nitrocoro/utils/UrlEncode.h>
 
 #include <optional>
 #include <stdexcept>
@@ -131,19 +132,29 @@ void HttpParser<HttpRequest>::parseRequestLine(std::string_view line)
     size_t pos2 = line.find(' ', pos1 + 1);
 
     data_.method = HttpMethod::fromString(line.substr(0, pos1));
-    data_.fullPath = line.substr(pos1 + 1, pos2 - pos1 - 1);
     data_.version = parseHttpVersion(line.substr(pos2 + 1));
 
-    size_t qpos = data_.fullPath.find('?');
-    if (qpos != std::string::npos)
+    std::string_view fullPath = line.substr(pos1 + 1, pos2 - pos1 - 1);
+    size_t qpos = fullPath.find('?');
+    std::string_view rawPath = fullPath.substr(0, qpos);
+
+    if (utils::needsUrlDecoding(rawPath))
     {
-        data_.path = data_.fullPath.substr(0, qpos);
-        data_.query = data_.fullPath.substr(qpos + 1);
+        data_.rawPath = rawPath;
+        data_.path = utils::urlDecodeComponent(rawPath);
+    }
+    else
+    {
+        data_.path = rawPath;
+    }
+
+    if (qpos != std::string_view::npos)
+    {
+        data_.query = fullPath.substr(qpos + 1);
         parseQueryString(data_.query);
     }
     else
     {
-        data_.path = data_.fullPath;
         data_.query.clear();
     }
 }
@@ -166,7 +177,6 @@ void HttpParser<HttpRequest>::parseHeader(std::string_view line)
 
 void HttpParser<HttpRequest>::parseQueryString(std::string_view queryStr)
 {
-    // TODO: url decode
     // TODO: multi-value
     size_t start = 0;
     while (start < queryStr.size())
@@ -178,8 +188,8 @@ void HttpParser<HttpRequest>::parseQueryString(std::string_view queryStr)
         size_t eqPos = pair.find('=');
         if (eqPos != std::string_view::npos)
         {
-            std::string key = std::string(pair.substr(0, eqPos));
-            std::string value = std::string(pair.substr(eqPos + 1));
+            std::string key = utils::formDecode(pair.substr(0, eqPos));
+            std::string value = utils::formDecode(pair.substr(eqPos + 1));
             data_.queries.emplace(std::move(key), std::move(value));
         }
 

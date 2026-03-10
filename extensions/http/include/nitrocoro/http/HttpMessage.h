@@ -21,8 +21,8 @@ struct HttpRequest
 {
     Version version = Version::kHttp11;
     HttpMethod method = methods::_Invalid;
-    std::string fullPath;
     std::string path;
+    std::string rawPath;
     std::string query;
     HttpHeaderMap headers;
     HttpCookieMap cookies;

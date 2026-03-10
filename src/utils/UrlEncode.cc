@@ -13,11 +13,11 @@ static bool isUnreserved(char c)
            || c == '-' || c == '_' || c == '.' || c == '~';
 }
 
-std::string urlEncode(std::string_view input)
+std::string formEncode(std::string_view input)
 {
     std::string result;
     result.reserve(input.size());
-    for (unsigned char c : input)
+    for (char c : input)
     {
         if (isUnreserved(c))
             result += c;
@@ -33,7 +33,7 @@ std::string urlEncode(std::string_view input)
     return result;
 }
 
-std::string urlDecode(std::string_view input)
+std::string formDecode(std::string_view input)
 {
     std::string result;
     result.reserve(input.size());
@@ -69,14 +69,19 @@ std::string urlDecode(std::string_view input)
 }
 
 
+bool needsUrlDecoding(std::string_view input)
+{
+    return input.find('%') != std::string_view::npos;
+}
+
 std::string urlEncodeComponent(std::string_view input)
 {
     std::string result;
     result.reserve(input.size());
-    for (unsigned char c : input)
+    for (char c : input)
     {
         if (isUnreserved(c))
-            result += static_cast<char>(c);
+            result += c;
         else
         {
             result += '%';
