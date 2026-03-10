@@ -73,7 +73,8 @@ public:
     explicit HttpOutgoingStream(io::StreamPtr stream)
         : detail::HttpOutgoingStreamBase<HttpRequest>(std::move(stream), Promise<>()) {}
 
-    void setMethod(const std::string & method) { data_.method = method; }
+    void setMethod(HttpMethod method) { data_.method = method; }
+    void setMethod(std::string_view method) { data_.method = HttpMethod::fromString(method); }
     void setPath(const std::string & path) { data_.path = path; }
     void setVersion(Version version) { data_.version = version; }
 };

@@ -117,7 +117,22 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
                 co_return;
         }
 
-        auto result = router_->route(request.method(), request.path());
+        auto method = request.method();
+        if (method == methods::_Invalid)
+        {
+            response.setStatus(StatusCode::k400BadRequest);
+            co_await response.end("Bad Request");
+            if (!bodyReader->isComplete())
+                co_await bodyReader->drain();
+            if (!keepAlive)
+            {
+                co_await stream->shutdown();
+                co_return;
+            }
+            continue;
+        }
+
+        auto result = router_->route(method, request.path());
         if (result)
             co_await result.handler->invoke(std::move(request), std::move(response), std::move(result.params));
         else if (result.reason == HttpRouter::RouteResult::Reason::MethodNotAllowed)

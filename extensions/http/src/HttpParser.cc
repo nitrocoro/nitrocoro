@@ -130,7 +130,7 @@ void HttpParser<HttpRequest>::parseRequestLine(std::string_view line)
     size_t pos1 = line.find(' ');
     size_t pos2 = line.find(' ', pos1 + 1);
 
-    data_.method = line.substr(0, pos1);
+    data_.method = HttpMethod::fromString(line.substr(0, pos1));
     data_.fullPath = line.substr(pos1 + 1, pos2 - pos1 - 1);
     data_.version = parseHttpVersion(line.substr(pos2 + 1));
 

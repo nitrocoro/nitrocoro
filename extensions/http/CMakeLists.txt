@@ -2,6 +2,7 @@ add_library(nitrocoro-http STATIC
     src/BodyReader.cc
     src/BodyWriter.cc
     src/HttpClient.cc
+    src/HttpMethod.cc
     src/HttpContext.cc
     src/HttpRouter.cc
     src/HttpHeader.cc
@@ -51,4 +52,8 @@ if (BUILD_TESTING)
     add_executable(http_router_test tests/http_router_test.cc)
     target_link_libraries(http_router_test PRIVATE nitrocoro-http)
     add_test(NAME http_router_test COMMAND http_router_test)
+
+    add_executable(http_method_test tests/http_method_test.cc)
+    target_link_libraries(http_method_test PRIVATE nitrocoro-http)
+    add_test(NAME http_method_test COMMAND http_method_test)
 endif ()

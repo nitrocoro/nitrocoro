@@ -19,11 +19,11 @@ using HttpQueryMap = std::map<std::string, std::string, std::less<>>;
 
 struct HttpRequest
 {
-    std::string method;
+    Version version = Version::kHttp11;
+    HttpMethod method = methods::_Invalid;
     std::string fullPath;
     std::string path;
     std::string query;
-    Version version = Version::kHttp11;
     HttpHeaderMap headers;
     HttpCookieMap cookies;
     HttpQueryMap queries;
@@ -36,9 +36,9 @@ struct HttpRequest
 
 struct HttpResponse
 {
+    Version version = Version::kHttp11;
     StatusCode statusCode = StatusCode::k200OK;
     std::string statusReason;
-    Version version = Version::kHttp11;
     HttpHeaderMap headers;
     HttpCookieMap cookies;
 

@@ -3,6 +3,7 @@
  * @brief HTTP request router implementation
  */
 #include <nitrocoro/http/HttpRouter.h>
+#include <stdexcept>
 
 namespace nitrocoro::http
 {
@@ -110,6 +111,13 @@ const HttpRouter::MethodMap * HttpRouter::matchRadix(const RouteNode & node, std
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+void HttpRouter::checkInvalidMethods(const HttpMethods & methods)
+{
+    for (const auto & m : methods.methods_)
+        if (m == methods::_Invalid)
+            throw std::invalid_argument("HttpRouter: invalid HTTP method");
+}
+
 void HttpRouter::addRouteImpl(const std::string & path, const HttpMethods & methods, HttpHandlerPtr handler)
 {
     auto isParamOrWild = [](std::string_view p, char c) {
@@ -134,7 +142,7 @@ void HttpRouter::addRouteImpl(const std::string & path, const HttpMethods & meth
     }
 }
 
-HttpRouter::RouteResult HttpRouter::route(const std::string & method, const std::string & path) const
+HttpRouter::RouteResult HttpRouter::route(HttpMethod method, const std::string & path) const
 {
     if (path.size() > kMaxPathLength)
         return {};

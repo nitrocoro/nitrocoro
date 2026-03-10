@@ -111,7 +111,12 @@ void HttpOutgoingStreamBase<DataType>::buildHeaders(std::string & buf)
 {
     if constexpr (std::is_same_v<DataType, HttpRequest>)
     {
-        buf.append(data_.method).append(" ").append(data_.path).append(" ").append(toVersionString(data_.version)).append("\r\n");
+        buf.append(data_.method.toString())
+            .append(" ")
+            .append(data_.path)
+            .append(" ")
+            .append(toVersionString(data_.version))
+            .append("\r\n");
 
         for (const auto & [name, header] : data_.headers)
         {
@@ -125,7 +130,12 @@ void HttpOutgoingStreamBase<DataType>::buildHeaders(std::string & buf)
     }
     else // HttpResponse
     {
-        buf.append(toVersionString(data_.version)).append(" ").append(std::to_string(static_cast<int>(data_.statusCode))).append(" ").append(data_.statusReason).append("\r\n");
+        buf.append(toVersionString(data_.version))
+            .append(" ")
+            .append(std::to_string(static_cast<int>(data_.statusCode)))
+            .append(" ")
+            .append(data_.statusReason)
+            .append("\r\n");
 
         for (const auto & [name, header] : data_.headers)
         {

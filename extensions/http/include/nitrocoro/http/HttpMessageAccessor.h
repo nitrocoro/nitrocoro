@@ -36,9 +36,9 @@ class HttpRequestAccessor : public HttpMessageAccessor<HttpRequest>
 public:
     using HttpMessageAccessor::HttpMessageAccessor;
 
-    const std::string & method() const { return message_.method; }
-    const std::string & path() const { return message_.path; }
     Version version() const { return message_.version; }
+    HttpMethod method() const { return message_.method; }
+    const std::string & path() const { return message_.path; }
     const HttpQueryMap & queries() const { return message_.queries; }
 
     const std::string & getQuery(std::string_view name) const
@@ -54,9 +54,9 @@ class HttpResponseAccessor : public HttpMessageAccessor<HttpResponse>
 public:
     using HttpMessageAccessor::HttpMessageAccessor;
 
+    Version version() const { return message_.version; }
     StatusCode statusCode() const { return message_.statusCode; }
     const std::string & statusReason() const { return message_.statusReason; }
-    Version version() const { return message_.version; }
 };
 
 template <typename Message>

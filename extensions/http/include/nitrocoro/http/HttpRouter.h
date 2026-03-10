@@ -5,6 +5,7 @@
 #pragma once
 
 #include <nitrocoro/http/HttpHandler.h>
+#include <nitrocoro/http/HttpTypes.h>
 
 #include <map>
 #include <memory>
@@ -19,14 +20,20 @@ namespace nitrocoro::http
 
 struct HttpMethods
 {
-    explicit HttpMethods(std::string method)
-        : methods_{ std::move(method) } {}
-    HttpMethods(std::initializer_list<std::string> methods)
+    explicit HttpMethods(std::string_view method)
+        : methods_{ HttpMethod::fromString(method) } {}
+    HttpMethods(HttpMethod method)
+        : methods_{ method } {}
+    HttpMethods(std::initializer_list<std::string_view> methods)
+    {
+        methods_.reserve(methods.size());
+        for (auto s : methods)
+            methods_.push_back(HttpMethod::fromString(s));
+    }
+    HttpMethods(std::initializer_list<HttpMethod> methods)
         : methods_(methods) {}
-    HttpMethods(std::vector<std::string> methods)
-        : methods_(std::move(methods)) {}
 
-    std::vector<std::string> methods_;
+    std::vector<HttpMethod> methods_;
 };
 
 /**
@@ -70,6 +77,7 @@ struct HttpMethods
  *    @endcode
  *
  * When no route matches, `route()` returns a `RouteResult` with a null handler.
+ * `addRoute()` and `addRouteRegex()` throw `std::invalid_argument` if any method is invalid.
  *
  * ## Security limits
  * - Paths longer than 2048 bytes are rejected (prevents ReDoS on regex routes).
@@ -112,15 +120,15 @@ public:
     void addRouteRegex(const std::string & pattern, HttpMethods methods, F && handler);
 
     // Returns {handler, params} for the matched route, or {nullptr, {}} if not found.
-    RouteResult route(const std::string & method, const std::string & path) const;
+    RouteResult route(HttpMethod method, const std::string & path) const;
 
 private:
-    using MethodMap = std::unordered_map<std::string, HttpHandlerPtr>;
+    struct RouteNode;
+    using MethodMap = std::unordered_map<HttpMethod, HttpHandlerPtr>;
+    using NodeMap = std::map<std::string, std::unique_ptr<RouteNode>, std::less<>>;
 
     struct RouteNode
     {
-        using NodeMap = std::map<std::string, std::unique_ptr<RouteNode>, std::less<>>;
-
         MethodMap handlers;
         NodeMap children;         // static segments
         NodeMap paramChildren;    // key = param name (:id → node)
@@ -136,6 +144,7 @@ private:
 
     void addRouteImpl(const std::string & path, const HttpMethods & methods, HttpHandlerPtr handler);
 
+    static void checkInvalidMethods(const HttpMethods & methods);
     static void insertRadix(RouteNode & node, std::string_view path, const HttpMethods & methods, const HttpHandlerPtr & handler);
     static const MethodMap * matchRadix(const RouteNode & node, std::string_view path, Params & params, size_t depth = 0);
 
@@ -145,12 +154,14 @@ private:
 template <typename F>
 void HttpRouter::addRoute(const std::string & path, HttpMethods methods, F && handler)
 {
+    checkInvalidMethods(methods);
     addRouteImpl(path, methods, makeHttpHandler(std::forward<F>(handler)));
 }
 
 template <typename F>
 void HttpRouter::addRouteRegex(const std::string & pattern, HttpMethods methods, F && handler)
 {
+    checkInvalidMethods(methods);
     auto h = makeHttpHandler(std::forward<F>(handler));
     for (auto & [pat, re, mm] : routes_.regexRoutes)
     {
