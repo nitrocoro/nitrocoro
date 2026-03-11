@@ -93,7 +93,7 @@ NITRO_TEST(http_headers)
 {
     HttpServer server(0);
     server.route("/headers", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        auto ua = req.getHeader(HttpHeader::NameCode::UserAgent);
+        const auto & ua = req.getHeader(HttpHeader::NameCode::UserAgent);
         resp.setHeader(HttpHeader::NameCode::ContentType, "text/plain");
         co_await resp.end(ua.empty() ? "no-ua" : "has-ua");
     });
@@ -239,6 +239,31 @@ NITRO_TEST(http_path_invalid_encoding)
         "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/foo%zz");
     NITRO_CHECK_EQ(resp.statusCode(), StatusCode::k200OK);
     NITRO_CHECK_EQ(resp.body(), "/foo%zz");
+
+    co_await server.stop();
+}
+
+/** Handler throws: connection is closed, server continues accepting new connections. */
+NITRO_TEST(http_handler_throws)
+{
+    HttpServer server(0);
+    server.route("/throw", { "GET" }, [](auto && req, auto && resp) -> Task<> {
+        throw std::runtime_error("handler error");
+    });
+    server.route("/ok", { "GET" }, [](auto && req, auto && resp) -> Task<> {
+        co_await resp.end("ok");
+    });
+    co_await start_server(server);
+
+    std::string base = "http://127.0.0.1:" + std::to_string(server.listeningPort());
+
+    // Handler throws: connection should be closed, client gets an exception
+    NITRO_CHECK_THROWS(co_await HttpClient{}.get(base + "/throw"));
+
+    // Server still works after handler threw
+    auto resp = co_await HttpClient{}.get(base + "/ok");
+    NITRO_CHECK_EQ(resp.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(resp.body(), "ok");
 
     co_await server.stop();
 }

@@ -133,17 +133,44 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         }
 
         auto result = router_->route(method, request.path());
-        if (result)
-            co_await result.handler->invoke(std::move(request), std::move(response), std::move(result.params));
-        else if (result.reason == HttpRouter::RouteResult::Reason::MethodNotAllowed)
+        if (result.reason != HttpRouter::RouteResult::Reason::Ok || !result.handler)
         {
-            response.setStatus(StatusCode::k405MethodNotAllowed);
-            co_await response.end("Method Not Allowed");
+            // TODO: custom handler
+            if (result.reason == HttpRouter::RouteResult::Reason::MethodNotAllowed)
+            {
+                response.setStatus(StatusCode::k405MethodNotAllowed);
+                co_await response.end("Method Not Allowed");
+            }
+            else
+            {
+                response.setStatus(StatusCode::k404NotFound);
+                co_await response.end("Not Found");
+            }
         }
         else
         {
-            response.setStatus(StatusCode::k404NotFound);
-            co_await response.end("Not Found");
+            std::exception_ptr exPtr;
+            try
+            {
+                co_await result.handler->invoke(std::move(request), std::move(response), std::move(result.params));
+            }
+            catch (const std::exception & ex)
+            {
+                NITRO_ERROR("Unhandled exception in handler: %s", ex.what());
+                exPtr = std::current_exception();
+            }
+            catch (...)
+            {
+                NITRO_ERROR("Unhandled exception in handler");
+                exPtr = std::current_exception();
+            }
+            // TODO: custom exception handler
+            if (exPtr)
+            {
+                // TODO: should we send 500 and continue the connection?
+                co_await stream->shutdown();
+                break;
+            }
         }
 
         if (!bodyReader->isComplete())
