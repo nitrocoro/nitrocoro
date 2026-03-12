@@ -38,6 +38,7 @@ Task<bool> ChunkedReader::parseChunkSize()
 
         if (currentChunkSize_ == 0)
         {
+            co_await skipCRLF();
             complete_ = true;
             state_ = State::Complete;
         }

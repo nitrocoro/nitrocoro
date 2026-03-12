@@ -134,7 +134,7 @@ void HttpOutgoingStreamBase<DataType>::buildHeaders(std::string & buf)
             .append(" ")
             .append(std::to_string(static_cast<int>(data_.statusCode)))
             .append(" ")
-            .append(data_.statusReason)
+            .append(data_.statusReason.empty() ? getDefaultReason(data_.statusCode) : data_.statusReason)
             .append("\r\n");
 
         for (const auto & [name, header] : data_.headers)

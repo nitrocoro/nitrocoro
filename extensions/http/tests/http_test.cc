@@ -5,6 +5,8 @@
 #include <nitrocoro/http/HttpClient.h>
 #include <nitrocoro/http/HttpRouter.h>
 #include <nitrocoro/http/HttpServer.h>
+#include <nitrocoro/net/InetAddress.h>
+#include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/testing/Test.h>
 
 using namespace nitrocoro;
@@ -264,6 +266,79 @@ NITRO_TEST(http_handler_throws)
     auto resp = co_await HttpClient{}.get(base + "/ok");
     NITRO_CHECK_EQ(resp.statusCode(), StatusCode::k200OK);
     NITRO_CHECK_EQ(resp.body(), "ok");
+
+    co_await server.stop();
+}
+
+/** Chunked POST followed by GET on the same keep-alive connection. */
+NITRO_TEST(http_chunked_keepalive)
+{
+    HttpServer server(0);
+    server.route("/echo", { "POST" }, [](auto && req, auto && resp) -> Task<> {
+        auto complete = co_await req.toCompleteRequest();
+        co_await resp.end(complete.body());
+    });
+    server.route("/ping", { "GET" }, [](auto && req, auto && resp) -> Task<> {
+        co_await resp.end("pong");
+    });
+    co_await start_server(server);
+
+    auto conn = co_await net::TcpConnection::connect(
+        net::InetAddress("127.0.0.1", server.listeningPort()));
+
+    // Chunked POST
+    std::string req1 = "POST /echo HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n"
+                       "Transfer-Encoding: chunked\r\n"
+                       "\r\n"
+                       "5\r\nhello\r\n"
+                       "0\r\n"
+                       "\r\n";
+    co_await conn->write(req1.data(), req1.size());
+
+    // Read response 1
+    std::string resp1;
+    char buf[4096];
+    while (resp1.find("\r\n\r\n") == std::string::npos)
+    {
+        size_t n = co_await conn->read(buf, sizeof(buf));
+        resp1.append(buf, n);
+    }
+    auto clPos = resp1.find("content-length: ");
+    NITRO_REQUIRE(clPos != std::string::npos);
+    size_t cl = std::stoul(resp1.substr(clPos + 16));
+    size_t headerEnd = resp1.find("\r\n\r\n") + 4;
+    while (resp1.size() - headerEnd < cl)
+    {
+        size_t n = co_await conn->read(buf, sizeof(buf));
+        resp1.append(buf, n);
+    }
+    NITRO_CHECK(resp1.find("200 OK") != std::string::npos);
+    NITRO_CHECK_EQ(resp1.substr(headerEnd, cl), "hello");
+
+    // GET on same connection
+    std::string req2 = "GET /ping HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n"
+                       "\r\n";
+    co_await conn->write(req2.data(), req2.size());
+
+    std::string resp2;
+    while (resp2.find("\r\n\r\n") == std::string::npos)
+    {
+        size_t n = co_await conn->read(buf, sizeof(buf));
+        resp2.append(buf, n);
+    }
+    auto cl2Pos = resp2.find("content-length: ");
+    NITRO_REQUIRE(cl2Pos != std::string::npos);
+    size_t cl2 = std::stoul(resp2.substr(cl2Pos + 16));
+    size_t headerEnd2 = resp2.find("\r\n\r\n") + 4;
+    while (resp2.size() - headerEnd2 < cl2)
+    {
+        size_t n = co_await conn->read(buf, sizeof(buf));
+        resp2.append(buf, n);
+    }
+    NITRO_CHECK(resp2.find("200 OK") != std::string::npos);
+    NITRO_CHECK_EQ(resp2.substr(headerEnd2, cl2), "pong");
 
     co_await server.stop();
 }
