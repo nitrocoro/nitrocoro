@@ -4,6 +4,8 @@
  */
 #include <nitrocoro/http/HttpServer.h>
 
+#include "HttpParser.h"
+
 #include <nitrocoro/core/Future.h>
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/http/HttpMessage.h>
@@ -11,28 +13,44 @@
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/utils/Debug.h>
 
-#include "HttpParser.h"
-
 namespace nitrocoro::http
 {
+
+static constexpr size_t kMaxHeaderCount = 128;
+static constexpr size_t kMaxHeaderLineSize = 8192;
 
 static Task<HttpParseResult<HttpRequest>> parseNext(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer)
 {
     HttpParser<HttpRequest> parser;
+    int lines = 0;
 
     while (true)
     {
         size_t pos = buffer->find("\r\n");
         if (pos == std::string::npos)
         {
+            if (buffer->remainSize() > kMaxHeaderLineSize)
+            {
+                // TODO: should not use parser error
+                co_return { {}, HttpParseError::MalformedRequestLine, "Header line too long" };
+            }
+
             char * writePtr = buffer->prepareWrite(4096);
             size_t n = co_await stream->read(writePtr, 4096);
             if (n == 0)
+            {
+                // TODO: should not use parser error
                 co_return { {}, HttpParseError::ConnectionClosed, "Connection closed before headers complete" };
+            }
             buffer->commitWrite(n);
             continue;
         }
 
+        if (++lines > kMaxHeaderCount)
+        {
+            // TODO: should not use parser error
+            co_return { {}, HttpParseError::MalformedRequestLine, "Too many headers" };
+        }
         std::string_view line = buffer->view().substr(0, pos);
         auto state = parser.parseLine(line);
         buffer->consume(pos + 2);

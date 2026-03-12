@@ -173,8 +173,8 @@ NITRO_TEST(router_shared_across_servers)
     co_await s2.stop();
 }
 
-/** Wrong method on a registered path returns 404. */
-NITRO_TEST(router_method_mismatch_404)
+/** Wrong method on a registered path returns 405. */
+NITRO_TEST(router_method_mismatch_405)
 {
     HttpServer server(0);
     server.route("/data", { "POST" }, [](auto && req, auto && resp) -> Task<> {
