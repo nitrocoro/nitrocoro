@@ -59,4 +59,8 @@ if (BUILD_TESTING)
     add_executable(http_parser_test tests/http_parser_test.cc)
     target_link_libraries(http_parser_test PRIVATE nitrocoro-http)
     add_test(NAME http_parser_test COMMAND http_parser_test)
+
+    add_executable(http_pipeline_test tests/http_pipeline_test.cc)
+    target_link_libraries(http_pipeline_test PRIVATE nitrocoro-http)
+    add_test(NAME http_pipeline_test COMMAND http_pipeline_test)
 endif ()

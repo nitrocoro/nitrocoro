@@ -3,12 +3,12 @@
  * @brief HTTP client for making requests
  */
 #pragma once
-
-#include <nitrocoro/core/Future.h>
-#include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/HttpCompleteMessage.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpStream.h>
+
+#include <nitrocoro/core/Future.h>
+#include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/net/Url.h>

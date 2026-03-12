@@ -3,9 +3,9 @@
  * @brief HTTP server based on TcpServer
  */
 #pragma once
+#include <nitrocoro/http/HttpRouter.h>
 
 #include <nitrocoro/core/Task.h>
-#include <nitrocoro/http/HttpRouter.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/TcpServer.h>
 

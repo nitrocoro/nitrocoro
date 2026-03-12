@@ -313,7 +313,7 @@ NITRO_TEST(http_chunked_keepalive)
         size_t n = co_await conn->read(buf, sizeof(buf));
         resp1.append(buf, n);
     }
-    NITRO_CHECK(resp1.find("200 OK") != std::string::npos);
+    NITRO_REQUIRE(resp1.find("200 OK") != std::string::npos);
     NITRO_CHECK_EQ(resp1.substr(headerEnd, cl), "hello");
 
     // GET on same connection
@@ -337,7 +337,7 @@ NITRO_TEST(http_chunked_keepalive)
         size_t n = co_await conn->read(buf, sizeof(buf));
         resp2.append(buf, n);
     }
-    NITRO_CHECK(resp2.find("200 OK") != std::string::npos);
+    NITRO_REQUIRE(resp2.find("200 OK") != std::string::npos);
     NITRO_CHECK_EQ(resp2.substr(headerEnd2, cl2), "pong");
 
     co_await server.stop();

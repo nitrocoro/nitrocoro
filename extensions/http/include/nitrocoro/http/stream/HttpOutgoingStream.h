@@ -3,12 +3,13 @@
  * @brief HTTP outgoing stream for writing requests and responses
  */
 #pragma once
-#include <nitrocoro/core/Future.h>
-#include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/BodyWriter.h>
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpTypes.h>
+
+#include <nitrocoro/core/Future.h>
+#include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/Stream.h>
 
 #include <memory>

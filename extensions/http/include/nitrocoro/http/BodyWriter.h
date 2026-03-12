@@ -3,8 +3,9 @@
  * @brief Body writer interface and factory
  */
 #pragma once
-#include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/HttpTypes.h>
+
+#include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/Stream.h>
 
 #include <memory>

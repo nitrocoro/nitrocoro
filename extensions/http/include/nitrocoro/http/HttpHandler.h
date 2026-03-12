@@ -3,9 +3,9 @@
  * @brief Type-erased wrapper for HTTP route handlers
  */
 #pragma once
+#include <nitrocoro/http/HttpStream.h>
 
 #include <nitrocoro/core/Task.h>
-#include <nitrocoro/http/HttpStream.h>
 
 #include <memory>
 #include <string>

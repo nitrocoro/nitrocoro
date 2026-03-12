@@ -3,10 +3,12 @@
  * @brief HTTP incoming stream for reading requests and responses
  */
 #pragma once
-#include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/BodyReader.h>
+#include <nitrocoro/http/HttpCompleteMessage.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpMessageAccessor.h>
+
+#include <nitrocoro/core/Task.h>
 
 #include <memory>
 #include <string>
@@ -40,9 +42,6 @@ protected:
 
 template <typename T>
 class HttpIncomingStream;
-
-class HttpCompleteRequest;
-class HttpCompleteResponse;
 
 template <>
 class HttpIncomingStream<HttpRequest>

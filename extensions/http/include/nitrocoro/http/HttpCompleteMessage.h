@@ -3,7 +3,6 @@
  * @brief HTTP message data structures
  */
 #pragma once
-
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpMessageAccessor.h>
 
