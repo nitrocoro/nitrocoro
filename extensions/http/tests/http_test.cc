@@ -245,6 +245,30 @@ NITRO_TEST(http_path_invalid_encoding)
     co_await server.stop();
 }
 
+/** HEAD request: no body in response, Content-Length matches GET. */
+NITRO_TEST(http_head)
+{
+    HttpServer server(0);
+    server.route("/data", { "GET" }, [](auto && req, auto && resp) -> Task<> {
+        co_await resp.end("hello world");
+    });
+    co_await start_server(server);
+
+    std::string url = "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/data";
+    HttpClient client;
+
+    auto getResp = co_await client.get(url);
+    NITRO_CHECK_EQ(getResp.statusCode(), StatusCode::k200OK);
+    auto expectedLen = getResp.getHeader(HttpHeader::NameCode::ContentLength);
+
+    auto headResp = co_await client.request("HEAD", url);
+    NITRO_CHECK_EQ(headResp.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK(headResp.body().empty());
+    NITRO_CHECK_EQ(headResp.getHeader(HttpHeader::NameCode::ContentLength), expectedLen);
+
+    co_await server.stop();
+}
+
 /** Handler throws: connection is closed, server continues accepting new connections. */
 NITRO_TEST(http_handler_throws)
 {

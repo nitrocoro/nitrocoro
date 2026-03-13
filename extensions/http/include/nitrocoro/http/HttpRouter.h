@@ -170,19 +170,23 @@ template <typename F>
 void HttpRouter::addRouteRegex(const std::string & pattern, const HttpMethods & methods, F && handler)
 {
     checkInvalidMethods(methods);
-    auto h = makeHttpHandler(std::forward<F>(handler));
-    for (auto & [pat, re, entry] : routes_.regexRoutes)
+    auto handlerPtr = makeHttpHandler(std::forward<F>(handler));
+    for (auto & [pat, _, entry] : routes_.regexRoutes)
     {
         if (pat == pattern)
         {
-            for (const auto & m : methods.methods_)
-                addMethodToEntry(entry, m, h);
+            for (const auto & method : methods.methods_)
+            {
+                addMethodToEntry(entry, method, handlerPtr);
+            }
             return;
         }
     }
     RouteEntry entry;
-    for (const auto & m : methods.methods_)
-        addMethodToEntry(entry, m, h);
+    for (const auto & method : methods.methods_)
+    {
+        addMethodToEntry(entry, method, handlerPtr);
+    }
     routes_.regexRoutes.emplace_back(pattern, std::regex(pattern), std::move(entry));
 }
 

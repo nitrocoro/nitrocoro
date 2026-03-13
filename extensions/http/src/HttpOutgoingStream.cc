@@ -19,7 +19,7 @@ static const char * toVersionString(Version version)
         case Version::kHttp11:
             return "HTTP/1.1";
         default:
-            return "HTTP/1.1";
+            return "UNKNOWN";
     }
 }
 
@@ -164,6 +164,12 @@ void HttpOutgoingStreamBase<DataType>::buildHeaders(std::string & buf)
 template <typename DataType>
 Task<> HttpOutgoingStreamBase<DataType>::write(const char * data, size_t len)
 {
+    bodyLength_ += len;
+    if (ignoreBody_)
+    {
+        co_return;
+    }
+
     if (!bodyWriter_)
         decideTransferMode();
 
@@ -184,7 +190,10 @@ Task<> HttpOutgoingStreamBase<DataType>::end()
 {
     if (!headersSent_)
     {
-        setHeader(HttpHeader::NameCode::ContentLength, "0");
+        if (!data_.headers.contains(HttpHeader::Name::ContentLength_L))
+        {
+            setHeader(HttpHeader::NameCode::ContentLength, std::to_string(bodyLength_));
+        }
         co_await writeHeaders();
     }
     if (bodyWriter_)
@@ -195,9 +204,14 @@ Task<> HttpOutgoingStreamBase<DataType>::end()
 template <typename DataType>
 Task<> HttpOutgoingStreamBase<DataType>::end(std::string_view data)
 {
-    // Threshold for merging headers and body in a single write call
-    // Bodies larger than this will be sent separately to avoid large memory copies
     constexpr size_t kMaxMergedBodySize = 32 * 1024; // 32KB
+
+    bodyLength_ += data.size();
+    if (ignoreBody_)
+    {
+        co_await end();
+        co_return;
+    }
 
     if (data.empty())
     {

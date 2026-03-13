@@ -27,8 +27,16 @@ template <typename DataType>
 class HttpOutgoingStreamBase
 {
 public:
-    explicit HttpOutgoingStreamBase(io::StreamPtr stream, Promise<> finishedPromise, std::optional<Future<>> prevFuture = std::nullopt)
-        : stream_(std::move(stream)), finishedPromise_(std::move(finishedPromise)), prevFuture_(std::move(prevFuture)) {}
+    explicit HttpOutgoingStreamBase(io::StreamPtr stream,
+                                    Promise<> finishedPromise,
+                                    std::optional<Future<>> prevFuture = std::nullopt,
+                                    bool ignoreBody = false)
+        : stream_(std::move(stream))
+        , finishedPromise_(std::move(finishedPromise))
+        , prevFuture_(std::move(prevFuture))
+        , ignoreBody_(ignoreBody)
+    {
+    }
 
     void setHeader(std::string_view name, std::string value);
     void setHeader(HttpHeader::NameCode code, std::string value);
@@ -47,11 +55,13 @@ protected:
 
     DataType data_;
     io::StreamPtr stream_;
-    bool headersSent_ = false;
-    TransferMode transferMode_ = TransferMode::Chunked;
+    bool headersSent_{ false };
+    TransferMode transferMode_{ TransferMode::Chunked };
     std::unique_ptr<BodyWriter> bodyWriter_;
     Promise<> finishedPromise_;
     std::optional<Future<>> prevFuture_;
+    bool ignoreBody_{ false };
+    size_t bodyLength_{ 0 };
 };
 
 } // namespace detail
@@ -69,10 +79,18 @@ class HttpOutgoingStream<HttpRequest>
     : public detail::HttpOutgoingStreamBase<HttpRequest>
 {
 public:
-    explicit HttpOutgoingStream(io::StreamPtr stream, Promise<> finishedPromise, std::optional<Future<>> prevFuture = std::nullopt)
-        : detail::HttpOutgoingStreamBase<HttpRequest>(std::move(stream), std::move(finishedPromise), std::move(prevFuture)) {}
+    explicit HttpOutgoingStream(io::StreamPtr stream,
+                                Promise<> finishedPromise,
+                                std::optional<Future<>> prevFuture = std::nullopt)
+        : detail::HttpOutgoingStreamBase<HttpRequest>(std::move(stream),
+                                                      std::move(finishedPromise),
+                                                      std::move(prevFuture))
+    {
+    }
     explicit HttpOutgoingStream(io::StreamPtr stream)
-        : detail::HttpOutgoingStreamBase<HttpRequest>(std::move(stream), Promise<>()) {}
+        : detail::HttpOutgoingStreamBase<HttpRequest>(std::move(stream), Promise<>())
+    {
+    }
 
     void setMethod(HttpMethod method) { data_.method = method; }
     void setMethod(std::string_view method) { data_.method = HttpMethod::fromString(method); }
@@ -89,8 +107,16 @@ class HttpOutgoingStream<HttpResponse>
     : public detail::HttpOutgoingStreamBase<HttpResponse>
 {
 public:
-    explicit HttpOutgoingStream(io::StreamPtr stream, Promise<> finishedPromise, std::optional<Future<>> prevFuture = std::nullopt)
-        : detail::HttpOutgoingStreamBase<HttpResponse>(std::move(stream), std::move(finishedPromise), std::move(prevFuture)) {}
+    explicit HttpOutgoingStream(io::StreamPtr stream,
+                                Promise<> finishedPromise,
+                                std::optional<Future<>> prevFuture = std::nullopt,
+                                bool ignoreBody = false)
+        : detail::HttpOutgoingStreamBase<HttpResponse>(std::move(stream),
+                                                       std::move(finishedPromise),
+                                                       std::move(prevFuture),
+                                                       ignoreBody)
+    {
+    }
 
     void setStatus(StatusCode code, const std::string & reason = "");
     void setVersion(Version version) { data_.version = version; }

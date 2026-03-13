@@ -162,9 +162,10 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
 
         auto bodyReader = BodyReader::create(stream, buffer, transferMode, contentLength);
         auto request = HttpIncomingStream<HttpRequest>(std::move(parsed.message), bodyReader);
+        auto method = request.method();
         Promise<> finishedPromise(scheduler_);
         auto finishedFuture = finishedPromise.get_future();
-        HttpOutgoingStream<HttpResponse> response(stream, std::move(finishedPromise), std::move(prevFuture));
+        HttpOutgoingStream<HttpResponse> response(stream, std::move(finishedPromise), std::move(prevFuture), method == methods::Head);
         prevFuture = std::move(finishedFuture);
         response.setCloseConnection(!keepAlive);
 
@@ -175,7 +176,6 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
                 co_return;
         }
 
-        auto method = request.method();
         if (method == methods::_Invalid)
         {
             response.setStatus(StatusCode::k400BadRequest);

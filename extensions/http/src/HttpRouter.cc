@@ -25,6 +25,11 @@ static std::string_view nextSegment(std::string_view path, size_t & pos)
 void HttpRouter::addMethodToEntry(RouteEntry & entry, HttpMethod method, const HttpHandlerPtr & handler)
 {
     entry.handlers[method] = handler;
+    if (method == methods::Get && !entry.handlers.contains(methods::Head))
+    {
+        entry.handlers[methods::Head] = handler;
+    }
+
     entry.allowedMethods.clear();
     for (const auto & [m, _] : entry.handlers)
     {

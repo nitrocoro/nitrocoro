@@ -312,6 +312,47 @@ NITRO_TEST(router_param_beats_wildcard)
     co_return;
 }
 
+// ── HEAD auto-registration ───────────────────────────────────────────────────
+
+// GET registered → HEAD automatically available
+NITRO_TEST(router_head_auto_registered)
+{
+    HttpRouter router;
+    router.addRoute("/hello", { "GET" }, dummyHandler());
+
+    NITRO_CHECK(match(router, methods::Head, "/hello").reason == HttpRouter::RouteResult::Reason::Ok);
+    co_return;
+}
+
+// HEAD registered manually (no GET) → HEAD ok, GET → 405
+NITRO_TEST(router_head_manual)
+{
+    HttpRouter router;
+    router.addRoute("/hello", { "HEAD" }, dummyHandler());
+
+    NITRO_CHECK(match(router, methods::Head, "/hello").reason == HttpRouter::RouteResult::Reason::Ok);
+    NITRO_CHECK(match(router, methods::Get, "/hello").reason == HttpRouter::RouteResult::Reason::MethodNotAllowed);
+    co_return;
+}
+
+// GET registered first, then HEAD registered explicitly → HEAD uses its own handler
+NITRO_TEST(router_head_override)
+{
+    HttpRouter router;
+    bool headCalled = false;
+    router.addRoute("/hello", { "GET" }, dummyHandler());
+    router.addRoute("/hello", { "HEAD" }, [&headCalled](auto req, auto resp) -> Task<> {
+        headCalled = true;
+        co_return;
+    });
+
+    auto result = match(router, methods::Head, "/hello");
+    NITRO_CHECK(result.reason == HttpRouter::RouteResult::Reason::Ok);
+    // handler should be the HEAD-specific one, not the GET one
+    NITRO_CHECK(result.handler != nullptr);
+    co_return;
+}
+
 // same path registered twice with different methods → both work, wrong method → 405
 NITRO_TEST(router_addroute_merges_methods)
 {

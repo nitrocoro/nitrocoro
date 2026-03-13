@@ -43,7 +43,7 @@ public:
 
 private:
     Task<HttpCompleteResponse> sendRequest(const std::string & method, const net::Url & url, const std::string & body);
-    Task<HttpCompleteResponse> readResponse(io::StreamPtr stream);
+    Task<HttpCompleteResponse> readResponse(io::StreamPtr stream, bool ignoreContentLength = false);
 
     StreamUpgrader upgrader_;
 };

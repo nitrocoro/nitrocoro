@@ -117,10 +117,10 @@ Task<HttpCompleteResponse> HttpClient::sendRequest(const std::string & method, c
     }
     co_await stream->write(request.c_str(), request.size());
 
-    co_return co_await readResponse(stream);
+    co_return co_await readResponse(stream, method == "HEAD");
 }
 
-Task<HttpCompleteResponse> HttpClient::readResponse(io::StreamPtr stream)
+Task<HttpCompleteResponse> HttpClient::readResponse(io::StreamPtr stream, bool ignoreContentLength)
 {
     auto buffer = std::make_shared<utils::StringBuffer>();
     auto result = co_await parseNext(stream, buffer);
@@ -129,9 +129,8 @@ Task<HttpCompleteResponse> HttpClient::readResponse(io::StreamPtr stream)
 
     auto transferMode = result.message.transferMode;
     auto contentLength = result.message.contentLength;
-    auto incomingStream = HttpIncomingStream<HttpResponse>(
-        std::move(result.message),
-        BodyReader::create(stream, buffer, transferMode, contentLength));
+    auto bodyReader = BodyReader::create(stream, buffer, transferMode, ignoreContentLength ? 0 : contentLength);
+    auto incomingStream = HttpIncomingStream<HttpResponse>(std::move(result.message), std::move(bodyReader));
     co_return co_await incomingStream.toCompleteResponse();
 }
 
