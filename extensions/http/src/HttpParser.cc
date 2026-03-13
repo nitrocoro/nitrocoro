@@ -10,6 +10,46 @@
 namespace nitrocoro::http
 {
 
+// RFC 7230 §3.2.6
+// token = 1*tchar
+// tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /
+//         "^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
+static bool isValidToken(std::string_view s)
+{
+    if (s.empty())
+        return false;
+    for (unsigned char c : s)
+    {
+        if (c <= 32 || c >= 127)
+            return false;
+        // separators
+        switch (c)
+        {
+            case '(':
+            case ')':
+            case '<':
+            case '>':
+            case '@':
+            case ',':
+            case ';':
+            case ':':
+            case '\\':
+            case '"':
+            case '/':
+            case '[':
+            case ']':
+            case '?':
+            case '=':
+            case '{':
+            case '}':
+                return false;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
 void HttpParser<HttpRequest>::setError(HttpParseError code, std::string message)
 {
     errorCode_ = code;
@@ -217,7 +257,7 @@ bool HttpParser<HttpRequest>::parseRequestLine(std::string_view line)
 void HttpParser<HttpRequest>::parseHeader(std::string_view line)
 {
     auto [name, value] = parseHeaderLine(line);
-    if (name.empty())
+    if (name.empty() || !isValidToken(name))
         return;
 
     HttpHeader header(name, std::string(value));
@@ -440,17 +480,17 @@ bool HttpParser<HttpResponse>::parseStatusLine(std::string_view line)
 void HttpParser<HttpResponse>::parseHeader(std::string_view line)
 {
     auto [name, value] = parseHeaderLine(line);
-    if (name.empty())
+    if (name.empty() || !isValidToken(name))
         return;
 
-    HttpHeader h(name, std::string(value));
-    if (h.nameCode() == HttpHeader::NameCode::SetCookie)
+    HttpHeader header(name, std::string(value));
+    if (header.nameCode() == HttpHeader::NameCode::SetCookie)
     {
         parseCookies(std::string(value));
     }
     else
     {
-        data_.headers.emplace(h.name(), std::move(h));
+        data_.headers.emplace(header.name(), std::move(header));
     }
 }
 
