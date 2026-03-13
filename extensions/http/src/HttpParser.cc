@@ -117,7 +117,22 @@ bool HttpParser<HttpRequest>::processTransferMode()
     it = data_.headers.find(HttpHeader::Name::ContentLength_L);
     if (it != data_.headers.end())
     {
-        data_.contentLength = std::stoul(it->second.value());
+        const std::string & clValue = it->second.value();
+        if (clValue.empty() || clValue[0] == '-')
+        {
+            setError(HttpParseError::AmbiguousContentLength, "Invalid content length");
+            return false;
+        }
+
+        try
+        {
+            data_.contentLength = std::stoul(clValue);
+        }
+        catch (const std::exception &)
+        {
+            setError(HttpParseError::AmbiguousContentLength, "Invalid content length");
+            return false;
+        }
         data_.transferMode = TransferMode::ContentLength;
     }
     else
@@ -162,6 +177,16 @@ bool HttpParser<HttpRequest>::parseRequestLine(std::string_view line)
 
     data_.method = HttpMethod::fromString(line.substr(0, pos1));
     data_.version = parseHttpVersion(line.substr(pos2 + 1));
+    if (data_.method == methods::_Invalid)
+    {
+        setError(HttpParseError::MalformedRequestLine, "Invalid http method");
+        return false;
+    }
+    if (data_.version == Version::kUnknown)
+    {
+        setError(HttpParseError::MalformedRequestLine, "Invalid http version");
+        return false;
+    }
 
     std::string_view fullPath = line.substr(pos1 + 1, pos2 - pos1 - 1);
     size_t qpos = fullPath.find('?');
@@ -315,7 +340,22 @@ bool HttpParser<HttpResponse>::processTransferMode()
     it = data_.headers.find(HttpHeader::Name::ContentLength_L);
     if (it != data_.headers.end())
     {
-        data_.contentLength = std::stoul(it->second.value());
+        const std::string & clValue = it->second.value();
+        if (clValue.empty() || clValue[0] == '-')
+        {
+            setError(HttpParseError::AmbiguousContentLength, "Invalid content length");
+            return false;
+        }
+
+        try
+        {
+            data_.contentLength = std::stoul(clValue);
+        }
+        catch (const std::exception &)
+        {
+            setError(HttpParseError::AmbiguousContentLength, "Invalid content length");
+            return false;
+        }
         data_.transferMode = TransferMode::ContentLength;
     }
     else
