@@ -111,6 +111,11 @@ const std::pair<std::string_view, std::string_view> & HttpHeader::codeToNames(Na
         { Name::AccessControlAllowHeaders_L, Name::AccessControlAllowHeaders_C },
         { Name::AccessControlAllowCredentials_L, Name::AccessControlAllowCredentials_C },
         { Name::Origin_L, Name::Origin_C },
+        { Name::SecWebSocketKey_L, Name::SecWebSocketKey_C },
+        { Name::SecWebSocketAccept_L, Name::SecWebSocketAccept_C },
+        { Name::SecWebSocketVersion_L, Name::SecWebSocketVersion_C },
+        { Name::SecWebSocketProtocol_L, Name::SecWebSocketProtocol_C },
+        { Name::SecWebSocketExtensions_L, Name::SecWebSocketExtensions_C },
         { Name::XForwardedFor_L, Name::XForwardedFor_C },
         { Name::XForwardedProto_L, Name::XForwardedProto_C },
         { Name::XRealIp_L, Name::XRealIp_C },
@@ -161,6 +166,11 @@ const std::pair<std::string_view, std::string_view> & HttpHeader::codeToNames(Na
     nitrocoro_HTTP_HEADER_CHECK_PAIR(AccessControlAllowHeaders);
     nitrocoro_HTTP_HEADER_CHECK_PAIR(AccessControlAllowCredentials);
     nitrocoro_HTTP_HEADER_CHECK_PAIR(Origin);
+    nitrocoro_HTTP_HEADER_CHECK_PAIR(SecWebSocketKey);
+    nitrocoro_HTTP_HEADER_CHECK_PAIR(SecWebSocketAccept);
+    nitrocoro_HTTP_HEADER_CHECK_PAIR(SecWebSocketVersion);
+    nitrocoro_HTTP_HEADER_CHECK_PAIR(SecWebSocketProtocol);
+    nitrocoro_HTTP_HEADER_CHECK_PAIR(SecWebSocketExtensions);
     nitrocoro_HTTP_HEADER_CHECK_PAIR(XForwardedFor);
     nitrocoro_HTTP_HEADER_CHECK_PAIR(XForwardedProto);
     nitrocoro_HTTP_HEADER_CHECK_PAIR(XRealIp);
@@ -226,6 +236,11 @@ HttpHeader::NameCode HttpHeader::nameToCode(std::string_view lowerName)
         { Name::AccessControlAllowHeaders_L, NameCode::AccessControlAllowHeaders },
         { Name::AccessControlAllowCredentials_L, NameCode::AccessControlAllowCredentials },
         { Name::Origin_L, NameCode::Origin },
+        { Name::SecWebSocketKey_L, NameCode::SecWebSocketKey },
+        { Name::SecWebSocketAccept_L, NameCode::SecWebSocketAccept },
+        { Name::SecWebSocketVersion_L, NameCode::SecWebSocketVersion },
+        { Name::SecWebSocketProtocol_L, NameCode::SecWebSocketProtocol },
+        { Name::SecWebSocketExtensions_L, NameCode::SecWebSocketExtensions },
         { Name::XForwardedFor_L, NameCode::XForwardedFor },
         { Name::XForwardedProto_L, NameCode::XForwardedProto },
         { Name::XRealIp_L, NameCode::XRealIp },

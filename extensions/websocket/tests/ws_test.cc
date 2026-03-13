@@ -21,7 +21,7 @@ using namespace std::chrono_literals;
 
 static std::string computeAccept(const std::string & key)
 {
-    auto digest = nitrocoro::utils::sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    auto digest = nitrocoro::utils::sha1(key + std::string{ kWebSocketGuid });
     return nitrocoro::utils::base64Encode(std::string_view(reinterpret_cast<const char *>(digest.data()), digest.size()));
 }
 

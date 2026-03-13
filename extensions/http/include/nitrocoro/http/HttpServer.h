@@ -29,7 +29,7 @@ public:
     using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr)>;
     // RequestUpgrader: called when request has "Connection: Upgrade".
     // Receives the request and the raw stream; returns true if the connection was taken over.
-    using RequestUpgrader = std::function<Task<bool>(HttpIncomingStream<HttpRequest> &, io::StreamPtr)>;
+    using RequestUpgrader = std::function<Task<bool>(HttpIncomingStream<HttpRequest> &, HttpOutgoingStream<HttpResponse> &, io::StreamPtr)>;
 
     explicit HttpServer(uint16_t port, Scheduler * scheduler = Scheduler::current());
     explicit HttpServer(HttpServerConfig config, Scheduler * scheduler = Scheduler::current());

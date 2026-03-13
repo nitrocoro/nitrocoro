@@ -104,6 +104,18 @@ public:
         static constexpr std::string_view Origin_L = "origin";
         static constexpr std::string_view Origin_C = "Origin";
 
+        // WebSocket
+        static constexpr std::string_view SecWebSocketKey_L = "sec-websocket-key";
+        static constexpr std::string_view SecWebSocketKey_C = "Sec-WebSocket-Key";
+        static constexpr std::string_view SecWebSocketAccept_L = "sec-websocket-accept";
+        static constexpr std::string_view SecWebSocketAccept_C = "Sec-WebSocket-Accept";
+        static constexpr std::string_view SecWebSocketVersion_L = "sec-websocket-version";
+        static constexpr std::string_view SecWebSocketVersion_C = "Sec-WebSocket-Version";
+        static constexpr std::string_view SecWebSocketProtocol_L = "sec-websocket-protocol";
+        static constexpr std::string_view SecWebSocketProtocol_C = "Sec-WebSocket-Protocol";
+        static constexpr std::string_view SecWebSocketExtensions_L = "sec-websocket-extensions";
+        static constexpr std::string_view SecWebSocketExtensions_C = "Sec-WebSocket-Extensions";
+
         // Custom
         static constexpr std::string_view XForwardedFor_L = "x-forwarded-for";
         static constexpr std::string_view XForwardedFor_C = "X-Forwarded-For";
@@ -164,6 +176,13 @@ public:
         AccessControlAllowHeaders,
         AccessControlAllowCredentials,
         Origin,
+
+        // WebSocket
+        SecWebSocketKey,
+        SecWebSocketAccept,
+        SecWebSocketVersion,
+        SecWebSocketProtocol,
+        SecWebSocketExtensions,
 
         // Custom
         XForwardedFor,

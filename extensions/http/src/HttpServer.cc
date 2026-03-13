@@ -19,6 +19,25 @@ namespace nitrocoro::http
 static constexpr size_t kMaxHeaderCount = 128;
 static constexpr size_t kMaxHeaderLineSize = 8192;
 
+static bool isUpgradeRequest(const HttpIncomingStream<HttpRequest> & request)
+{
+    const auto & connection = request.getHeader(HttpHeader::NameCode::Connection);
+    if (connection.empty())
+    {
+        return false;
+    }
+    auto lower = HttpHeader::toLower(connection);
+    if (lower.find("upgrade") == std::string_view::npos)
+    {
+        return false;
+    }
+    if (request.getHeader(HttpHeader::NameCode::Upgrade).empty())
+    {
+        return false;
+    }
+    return true;
+}
+
 static Task<HttpParseResult<HttpRequest>> parseNext(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer)
 {
     HttpParser<HttpRequest> parser;
@@ -179,9 +198,9 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         prevFuture = std::move(finishedFuture);
         response.setCloseConnection(!keepAlive);
 
-        if (requestUpgrader_ && !request.getHeader(HttpHeader::Name::Upgrade_L).empty())
+        if (requestUpgrader_ && isUpgradeRequest(request))
         {
-            bool taken = co_await requestUpgrader_(request, stream);
+            bool taken = co_await requestUpgrader_(request, response, stream);
             if (taken)
                 co_return;
         }
@@ -228,7 +247,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         else
         {
             // TODO: refine if logics
-            auto expect = request.getHeader(HttpHeader::Name::Expect_L);
+            auto expect = request.getHeader(HttpHeader::NameCode::Expect);
             if (!expect.empty())
             {
                 if (expect != "100-continue")

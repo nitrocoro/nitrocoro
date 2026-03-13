@@ -7,13 +7,11 @@
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/utils/Base64.h>
 #include <nitrocoro/utils/Sha1.h>
-
-#include <string>
+#include <nitrocoro/websocket/WsTypes.h>
 
 static std::string computeAccept(const std::string & key)
 {
-    static constexpr std::string_view kGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    auto digest = nitrocoro::utils::sha1(key + std::string(kGuid));
+    auto digest = nitrocoro::utils::sha1(key + std::string{ nitrocoro::websocket::kWebSocketGuid });
     return nitrocoro::utils::base64Encode(std::string_view(reinterpret_cast<const char *>(digest.data()), digest.size()));
 }
 
@@ -27,38 +25,39 @@ void WsServer::route(const std::string & path, Handler handler)
 
 void WsServer::attachTo(http::HttpServer & server)
 {
-    server.setRequestUpgrader([this](http::HttpIncomingStream<http::HttpRequest> & req, io::StreamPtr stream) -> Task<bool> {
-        co_return co_await handleUpgrade(req, std::move(stream));
+    server.setRequestUpgrader([this](http::HttpIncomingStream<http::HttpRequest> & req,
+                                     http::HttpOutgoingStream<http::HttpResponse> & resp,
+                                     io::StreamPtr stream) -> Task<bool> {
+        co_return co_await handleUpgrade(req, resp, std::move(stream));
     });
 }
 
-Task<bool> WsServer::handleUpgrade(http::HttpIncomingStream<http::HttpRequest> & req, io::StreamPtr stream)
+Task<bool> WsServer::handleUpgrade(http::HttpIncomingStream<http::HttpRequest> & req,
+                                   http::HttpOutgoingStream<http::HttpResponse> & resp,
+                                   io::StreamPtr stream)
 {
     using http::HttpHeader;
 
     // Only handle WebSocket upgrades
-    auto & upgrade = req.getHeader(HttpHeader::Name::Upgrade_L);
-    if (upgrade != "websocket")
+    auto & upgrade = req.getHeader(HttpHeader::NameCode::Upgrade);
+    if (HttpHeader::toLower(upgrade) != "websocket")
         co_return false;
 
     auto it = routes_.find(std::string(req.path()));
     if (it == routes_.end())
         co_return false;
 
-    auto & key = req.getHeader("sec-websocket-key");
+    auto & key = req.getHeader(HttpHeader::NameCode::SecWebSocketKey);
     if (key.empty())
         co_return false;
 
     std::string accept = computeAccept(key);
 
-    // Send 101 Switching Protocols directly on the stream
-    std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
-                           "Upgrade: websocket\r\n"
-                           "Connection: Upgrade\r\n"
-                           "Sec-WebSocket-Accept: "
-                           + accept + "\r\n"
-                                      "\r\n";
-    co_await stream->write(response.data(), response.size());
+    resp.setStatus(http::StatusCode::k101SwitchingProtocols);
+    resp.setHeader(HttpHeader::NameCode::Upgrade, "websocket");
+    resp.setHeader(HttpHeader::NameCode::Connection, "Upgrade");
+    resp.setHeader(HttpHeader::NameCode::SecWebSocketAccept, accept);
+    co_await resp.end();
 
     WsConnection conn(std::move(stream));
     co_await it->second(conn);
