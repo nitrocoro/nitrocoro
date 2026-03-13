@@ -148,11 +148,17 @@ void HttpOutgoingStreamBase<DataType>::buildHeaders(std::string & buf)
             buf.append("Set-Cookie: ").append(name).append("=").append(value).append("\r\n");
         }
 
-        if (data_.headers.find(HttpHeader::Name::Date_L) == data_.headers.end())
+        if (sendDateHeader_ && data_.headers.find(HttpHeader::Name::Date_L) == data_.headers.end())
         {
             char dateBuf[32];
             std::time_t now = std::time(nullptr);
-            std::strftime(dateBuf, sizeof(dateBuf), "%a, %d %b %Y %H:%M:%S GMT", std::gmtime(&now));
+            std::tm tm{};
+#ifdef _WIN32
+            gmtime_s(&tm, &now);
+#else
+            gmtime_r(&now, &tm);
+#endif
+            std::strftime(dateBuf, sizeof(dateBuf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
             buf.append("Date: ").append(dateBuf).append("\r\n");
         }
 

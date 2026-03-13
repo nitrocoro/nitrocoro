@@ -16,6 +16,13 @@
 namespace nitrocoro::http
 {
 
+struct HttpServerConfig
+{
+    uint16_t port{ 0 };
+    std::shared_ptr<HttpRouter> router;
+    bool send_date_header{ true };
+};
+
 class HttpServer
 {
 public:
@@ -25,7 +32,7 @@ public:
     using RequestUpgrader = std::function<Task<bool>(HttpIncomingStream<HttpRequest> &, io::StreamPtr)>;
 
     explicit HttpServer(uint16_t port, Scheduler * scheduler = Scheduler::current());
-    explicit HttpServer(uint16_t port, std::shared_ptr<HttpRouter> router, Scheduler * scheduler = Scheduler::current());
+    explicit HttpServer(HttpServerConfig config, Scheduler * scheduler = Scheduler::current());
 
     uint16_t listeningPort() const { return port_; }
 
@@ -55,8 +62,9 @@ public:
 private:
     Task<> handleConnection(net::TcpConnectionPtr conn);
 
-    uint16_t port_;
+    HttpServerConfig config_;
     Scheduler * scheduler_;
+    uint16_t port_;
     StreamUpgrader upgrader_;
     RequestUpgrader requestUpgrader_;
     std::shared_ptr<HttpRouter> router_;

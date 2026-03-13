@@ -65,14 +65,22 @@ static Task<HttpParseResult<HttpRequest>> parseNext(io::StreamPtr stream, std::s
 }
 
 HttpServer::HttpServer(uint16_t port, Scheduler * scheduler)
-    : HttpServer(port, std::make_shared<HttpRouter>(), scheduler)
+    : HttpServer(HttpServerConfig(port), scheduler)
 {
 }
 
-HttpServer::HttpServer(uint16_t port, std::shared_ptr<HttpRouter> router, Scheduler * scheduler)
-    : port_(port), scheduler_(scheduler), router_(std::move(router))
+HttpServer::HttpServer(HttpServerConfig config, Scheduler * scheduler)
+    : config_(std::move(config))
+    , scheduler_(scheduler)
+    , port_(config_.port)
+    , router_(config_.router)
+    , server_(std::make_unique<net::TcpServer>(port_, scheduler_))
 {
-    server_ = std::make_unique<net::TcpServer>(port_, scheduler_);
+    if (!config_.router)
+    {
+        router_ = std::make_shared<HttpRouter>();
+    }
+
     if (port_ == 0)
     {
         port_ = server_->port();
@@ -148,7 +156,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         {
             NITRO_DEBUG("Bad request: %s", parsed.errorMessage.c_str());
             Promise<> p(scheduler_);
-            HttpOutgoingStream<HttpResponse> errResp(stream, std::move(p), std::move(prevFuture));
+            HttpOutgoingStream<HttpResponse> errResp(stream, std::move(p), std::move(prevFuture), false, config_.send_date_header);
             errResp.setStatus(StatusCode::k400BadRequest);
             errResp.setCloseConnection(true);
             co_await errResp.end("Bad Request");
@@ -167,7 +175,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         Promise<> finishedPromise(scheduler_);
         auto finishedFuture = finishedPromise.get_future();
         bool ignoreBody = (method == methods::Head);
-        HttpOutgoingStream<HttpResponse> response(stream, std::move(finishedPromise), std::move(prevFuture), ignoreBody);
+        HttpOutgoingStream<HttpResponse> response(stream, std::move(finishedPromise), std::move(prevFuture), ignoreBody, config_.send_date_header);
         prevFuture = std::move(finishedFuture);
         response.setCloseConnection(!keepAlive);
 

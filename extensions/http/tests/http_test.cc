@@ -9,6 +9,9 @@
 #include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/testing/Test.h>
 
+#include <iomanip>
+#include <sstream>
+
 using namespace nitrocoro;
 using namespace nitrocoro::http;
 using namespace std::chrono_literals;
@@ -158,8 +161,8 @@ NITRO_TEST(router_shared_across_servers)
         co_await resp.end("pong");
     });
 
-    HttpServer s1(0, router);
-    HttpServer s2(0, router);
+    HttpServer s1({ .router = router });
+    HttpServer s2({ .router = router });
     co_await start_server(s1);
     co_await start_server(s2);
 
@@ -540,6 +543,41 @@ NITRO_TEST(http_expect_unknown)
     NITRO_CHECK(resp.find("417") != std::string::npos);
 
     co_await server.stop();
+}
+
+/** Date header: present with correct RFC 7231 format by default, absent when disabled. */
+NITRO_TEST(http_date_header)
+{
+    HttpClient client;
+
+    {
+        HttpServer server(0);
+        server.route("/", { "GET" }, [](auto && req, auto && resp) -> Task<> {
+            co_await resp.end("ok");
+        });
+        co_await start_server(server);
+
+        auto resp = co_await client.get("http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/");
+        const auto & date = resp.getHeader(HttpHeader::NameCode::Date);
+        NITRO_CHECK(!date.empty());
+        std::tm tm{};
+        std::istringstream ss(date);
+        ss >> std::get_time(&tm, "%a, %d %b %Y %H:%M:%S GMT");
+        NITRO_CHECK(!ss.fail());
+        co_await server.stop();
+    }
+
+    {
+        HttpServer server({ .send_date_header = false });
+        server.route("/", { "GET" }, [](auto && req, auto && resp) -> Task<> {
+            co_await resp.end("ok");
+        });
+        co_await start_server(server);
+
+        auto resp = co_await client.get("http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/");
+        NITRO_CHECK(resp.getHeader(HttpHeader::NameCode::Date).empty());
+        co_await server.stop();
+    }
 }
 
 int main(int argc, char ** argv)

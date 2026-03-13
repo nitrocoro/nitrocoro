@@ -30,11 +30,13 @@ public:
     explicit HttpOutgoingStreamBase(io::StreamPtr stream,
                                     Promise<> finishedPromise,
                                     std::optional<Future<>> prevFuture = std::nullopt,
-                                    bool ignoreBody = false)
+                                    bool ignoreBody = false,
+                                    bool send_date_header = true)
         : stream_(std::move(stream))
         , finishedPromise_(std::move(finishedPromise))
         , prevFuture_(std::move(prevFuture))
         , ignoreBody_(ignoreBody)
+        , sendDateHeader_(send_date_header)
     {
     }
 
@@ -61,6 +63,7 @@ protected:
     Promise<> finishedPromise_;
     std::optional<Future<>> prevFuture_;
     bool ignoreBody_{ false };
+    bool sendDateHeader_{ true };
     size_t bodyLength_{ 0 };
 };
 
@@ -110,11 +113,13 @@ public:
     explicit HttpOutgoingStream(io::StreamPtr stream,
                                 Promise<> finishedPromise,
                                 std::optional<Future<>> prevFuture = std::nullopt,
-                                bool ignoreBody = false)
+                                bool ignoreBody = false,
+                                bool send_date_header = true)
         : detail::HttpOutgoingStreamBase<HttpResponse>(std::move(stream),
                                                        std::move(finishedPromise),
                                                        std::move(prevFuture),
-                                                       ignoreBody)
+                                                       ignoreBody,
+                                                       send_date_header)
     {
     }
 
