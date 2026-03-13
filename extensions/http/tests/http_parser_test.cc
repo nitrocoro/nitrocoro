@@ -65,34 +65,37 @@ NITRO_TEST(http_parser_request_content_length)
     co_return;
 }
 
-NITRO_TEST(http_parser_request_chunked)
+NITRO_TEST(http_parser_request_transfer_encoding)
 {
-    HttpParser<HttpRequest> parser;
-
-    parser.parseLine("POST /data HTTP/1.1");
-    parser.parseLine("Host: example.com");
-    parser.parseLine("Transfer-Encoding: chunked");
-    parser.parseLine("");
-
-    auto result = parser.extractResult();
-    NITRO_CHECK(!result.error());
-    NITRO_CHECK_EQ(result.message.transferMode, TransferMode::Chunked);
-    co_return;
-}
-
-NITRO_TEST(http_parser_request_unsupported_encoding)
-{
-    HttpParser<HttpRequest> parser;
-
-    parser.parseLine("POST /data HTTP/1.1");
-    parser.parseLine("Host: example.com");
-    parser.parseLine("Transfer-Encoding: gzip");
-    auto state = parser.parseLine("");
-
-    NITRO_CHECK_EQ(state, HttpParserState::Error);
-    auto result = parser.extractResult();
-    NITRO_CHECK(result.error());
-    NITRO_CHECK_EQ(result.errorCode, HttpParseError::UnsupportedTransferEncoding);
+    // chunked
+    {
+        HttpParser<HttpRequest> parser;
+        parser.parseLine("POST /data HTTP/1.1");
+        parser.parseLine("Transfer-Encoding: chunked");
+        parser.parseLine("");
+        auto result = parser.extractResult();
+        NITRO_CHECK(!result.error());
+        NITRO_CHECK_EQ(result.message.transferMode, TransferMode::Chunked);
+    }
+    // gzip, chunked
+    {
+        HttpParser<HttpRequest> parser;
+        parser.parseLine("POST /data HTTP/1.1");
+        parser.parseLine("Transfer-Encoding: gzip, chunked");
+        parser.parseLine("");
+        auto result = parser.extractResult();
+        NITRO_CHECK(!result.error());
+        NITRO_CHECK_EQ(result.message.transferMode, TransferMode::Chunked);
+    }
+    // unsupported
+    {
+        HttpParser<HttpRequest> parser;
+        parser.parseLine("POST /data HTTP/1.1");
+        parser.parseLine("Transfer-Encoding: gzip");
+        auto state = parser.parseLine("");
+        NITRO_CHECK_EQ(state, HttpParserState::Error);
+        NITRO_CHECK_EQ(parser.extractResult().errorCode, HttpParseError::UnsupportedTransferEncoding);
+    }
     co_return;
 }
 
@@ -177,17 +180,37 @@ NITRO_TEST(http_parser_response_content_length)
     co_return;
 }
 
-NITRO_TEST(http_parser_response_chunked)
+NITRO_TEST(http_parser_response_transfer_encoding)
 {
-    HttpParser<HttpResponse> parser;
-
-    parser.parseLine("HTTP/1.1 200 OK");
-    parser.parseLine("Transfer-Encoding: chunked");
-    parser.parseLine("");
-
-    auto result = parser.extractResult();
-    NITRO_CHECK(!result.error());
-    NITRO_CHECK_EQ(result.message.transferMode, TransferMode::Chunked);
+    // chunked
+    {
+        HttpParser<HttpResponse> parser;
+        parser.parseLine("HTTP/1.1 200 OK");
+        parser.parseLine("Transfer-Encoding: chunked");
+        parser.parseLine("");
+        auto result = parser.extractResult();
+        NITRO_CHECK(!result.error());
+        NITRO_CHECK_EQ(result.message.transferMode, TransferMode::Chunked);
+    }
+    // gzip, chunked
+    {
+        HttpParser<HttpResponse> parser;
+        parser.parseLine("HTTP/1.1 200 OK");
+        parser.parseLine("Transfer-Encoding: gzip, chunked");
+        parser.parseLine("");
+        auto result = parser.extractResult();
+        NITRO_CHECK(!result.error());
+        NITRO_CHECK_EQ(result.message.transferMode, TransferMode::Chunked);
+    }
+    // unsupported
+    {
+        HttpParser<HttpResponse> parser;
+        parser.parseLine("HTTP/1.1 200 OK");
+        parser.parseLine("Transfer-Encoding: deflate");
+        auto state = parser.parseLine("");
+        NITRO_CHECK_EQ(state, HttpParserState::Error);
+        NITRO_CHECK_EQ(parser.extractResult().errorCode, HttpParseError::UnsupportedTransferEncoding);
+    }
     co_return;
 }
 
@@ -228,21 +251,6 @@ NITRO_TEST(http_parser_response_http10_default_close)
     auto result = parser.extractResult();
     NITRO_CHECK(!result.error());
     NITRO_CHECK(result.message.shouldClose); // HTTP/1.0 default
-    co_return;
-}
-
-NITRO_TEST(http_parser_response_unsupported_encoding)
-{
-    HttpParser<HttpResponse> parser;
-
-    parser.parseLine("HTTP/1.1 200 OK");
-    parser.parseLine("Transfer-Encoding: deflate");
-    auto state = parser.parseLine("");
-
-    NITRO_CHECK_EQ(state, HttpParserState::Error);
-    auto result = parser.extractResult();
-    NITRO_CHECK(result.error());
-    NITRO_CHECK_EQ(result.errorCode, HttpParseError::UnsupportedTransferEncoding);
     co_return;
 }
 

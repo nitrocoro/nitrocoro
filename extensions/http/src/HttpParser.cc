@@ -140,7 +140,7 @@ bool HttpParser<HttpRequest>::processTransferMode()
     {
         std::string_view value = it->second.value();
 
-        if (value == "chunked")
+        if (value.find("chunked") != std::string_view::npos)
         {
             data_.transferMode = TransferMode::Chunked;
             return true;
@@ -370,7 +370,7 @@ bool HttpParser<HttpResponse>::processTransferMode()
     {
         std::string_view value = it->second.value();
 
-        if (value == "chunked")
+        if (value.find("chunked") != std::string_view::npos)
         {
             data_.transferMode = TransferMode::Chunked;
             return true;
