@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <string_view>
 #include <sys/stat.h>
@@ -108,6 +109,27 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                 resp.setStatus(404);
                 co_await resp.end();
                 co_return;
+            }
+
+            // Last-Modified / 304
+            {
+                struct tm tm{};
+#ifdef _WIN32
+                gmtime_s(&tm, &st.st_mtime);
+#else
+                gmtime_r(&st.st_mtime, &tm);
+#endif
+                char lm[32]; // strftime ensure ends with \0
+                std::strftime(lm, sizeof(lm), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+
+                const auto & ims = req.getHeader(HttpHeader::NameCode::IfModifiedSince);
+                if (!ims.empty() && ims == lm)
+                {
+                    resp.setStatus(304);
+                    co_await resp.end();
+                    co_return;
+                }
+                resp.setHeader(HttpHeader::NameCode::LastModified, lm);
             }
 
             // ETag / 304

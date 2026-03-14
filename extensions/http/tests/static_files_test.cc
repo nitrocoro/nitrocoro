@@ -5,6 +5,7 @@
 #include <nitrocoro/http/HttpClient.h>
 #include <nitrocoro/http/HttpServer.h>
 #include <nitrocoro/http/StaticFiles.h>
+#include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/testing/Test.h>
 
 #include <filesystem>
@@ -38,6 +39,47 @@ static SharedFuture<> start_server(HttpServer & server)
 {
     Scheduler::current()->spawn([&server]() -> Task<> { co_await server.start(); });
     return server.started();
+}
+
+static Task<std::string> rawHttp(uint16_t port, std::string req)
+{
+    auto conn = co_await net::TcpConnection::connect(net::InetAddress("127.0.0.1", port));
+    co_await conn->write(req.data(), req.size());
+    co_await conn->shutdown();
+    std::string resp;
+    char buf[4096];
+    while (true)
+    {
+        size_t n = co_await conn->read(buf, sizeof(buf));
+        if (n == 0)
+            break;
+        resp.append(buf, n);
+    }
+    co_return resp;
+}
+
+static int statusCode(const std::string & resp)
+{
+    // "HTTP/1.1 XXX"
+    auto pos = resp.find(' ');
+    if (pos == std::string::npos)
+        return 0;
+    return std::stoi(resp.substr(pos + 1, 3));
+}
+
+static std::string getHeader(const std::string & resp, std::string_view name)
+{
+    // case-insensitive search for "name: value\r\n"
+    std::string lower = resp;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    std::string lname(name);
+    std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+    auto pos = lower.find(lname + ": ");
+    if (pos == std::string::npos)
+        return {};
+    pos += lname.size() + 2;
+    auto end = resp.find("\r\n", pos);
+    return resp.substr(pos, end - pos);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -107,18 +149,50 @@ NITRO_TEST(static_files_etag_304)
     server.route("/*path", { "GET" }, staticFiles(dir.path.string()));
     co_await start_server(server);
 
-    std::string url = "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/data.txt";
+    uint16_t port = server.listeningPort();
     HttpClient client;
 
-    auto resp1 = co_await client.get(url);
+    auto resp1 = co_await client.get("http://127.0.0.1:" + std::to_string(port) + "/data.txt");
     NITRO_CHECK_EQ(resp1.statusCode(), StatusCode::k200OK);
     auto etag = resp1.getHeader("etag");
     NITRO_REQUIRE(!etag.empty());
 
-    // Second request with If-None-Match
-    // TODO: HttpClient send headers
-    // auto req = co_await client.request(methods::Get, url, {{"If-None-Match", etag}});
-    // NITRO_CHECK_EQ(req.statusCode(), StatusCode::k304NotModified);
+    std::string req = "GET /data.txt HTTP/1.1\r\n"
+                      "Host: 127.0.0.1\r\n"
+                      "If-None-Match: "
+                      + etag + "\r\n"
+                               "Connection: close\r\n\r\n";
+    auto resp2 = co_await rawHttp(port, req);
+    NITRO_CHECK_EQ(statusCode(resp2), 304);
+
+    co_await server.stop();
+}
+
+/** Second GET with matching Last-Modified → 304 Not Modified. */
+NITRO_TEST(static_files_last_modified_304)
+{
+    TempDir dir;
+    dir.write("data.txt", "some content");
+
+    HttpServer server(0);
+    server.route("/*path", { "GET" }, staticFiles(dir.path.string()));
+    co_await start_server(server);
+
+    uint16_t port = server.listeningPort();
+    HttpClient client;
+
+    auto resp1 = co_await client.get("http://127.0.0.1:" + std::to_string(port) + "/data.txt");
+    NITRO_CHECK_EQ(resp1.statusCode(), StatusCode::k200OK);
+    auto lm = resp1.getHeader("last-modified");
+    NITRO_REQUIRE(!lm.empty());
+
+    std::string req = "GET /data.txt HTTP/1.1\r\n"
+                      "Host: 127.0.0.1\r\n"
+                      "If-Modified-Since: "
+                      + lm + "\r\n"
+                             "Connection: close\r\n\r\n";
+    auto resp2 = co_await rawHttp(port, req);
+    NITRO_CHECK_EQ(statusCode(resp2), 304);
 
     co_await server.stop();
 }
