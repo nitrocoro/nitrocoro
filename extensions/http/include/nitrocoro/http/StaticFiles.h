@@ -6,6 +6,7 @@
 
 #include <nitrocoro/http/HttpHandler.h>
 
+#include <chrono>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -23,6 +24,12 @@ struct StaticFilesOptions
     int max_age = 3600;
     std::unordered_map<std::string, std::string> mime_types = defaultMimeTypes();
     std::unordered_map<std::string, std::string> accept_encodings = defaultAcceptEncodings();
+
+    // cache
+    int cache_ttl = 0;                              // seconds; 0 = disabled
+    size_t cache_max_file_size = 1024 * 1024;       // files larger than this are not cached (default 1MB)
+    size_t cache_max_cache_size = 64 * 1024 * 1024; // total cache capacity (default 64MB)
+    std::string cache_header;                       // if non-empty, add this header with HIT/MISS value
 };
 
 /**

@@ -8,8 +8,10 @@
 #include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/testing/Test.h>
 
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <sys/stat.h>
 
 using namespace nitrocoro;
 using namespace nitrocoro::http;
@@ -436,6 +438,121 @@ NITRO_TEST(static_files_custom_accept_encodings)
     auto resp = co_await rawHttp(port, req);
     NITRO_CHECK_EQ(statusCode(resp), 200);
     NITRO_CHECK(getHeader(resp, "Content-Encoding") != "br");
+
+    co_await server.stop();
+}
+
+NITRO_TEST(static_files_cache_hit)
+{
+    TempDir dir;
+    dir.write("data.txt", "hello");
+
+    StaticFilesOptions opts;
+    opts.cache_ttl = 60;
+    opts.cache_header = "X-Cache";
+
+    HttpServer server(0);
+    server.route("/*path", { "GET" }, staticFiles(dir.path.string(), std::move(opts)));
+    co_await start_server(server);
+
+    HttpClient client;
+    std::string url = "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/data.txt";
+
+    auto resp1 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp1.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(resp1.getHeader("x-cache"), "MISS");
+
+    auto resp2 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp2.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(resp2.getHeader("x-cache"), "HIT");
+    NITRO_CHECK_EQ(resp2.body(), "hello");
+
+    co_await server.stop();
+}
+
+/** Cache stale: file modified (new mtime/etag) → cache invalidated, new content served. */
+NITRO_TEST(static_files_cache_stale)
+{
+    TempDir dir;
+    dir.write("data.txt", "original");
+
+    StaticFilesOptions opts;
+    opts.cache_ttl = 60;
+    opts.cache_header = "X-Cache";
+
+    HttpServer server(0);
+    server.route("/*path", { "GET" }, staticFiles(dir.path.string(), std::move(opts)));
+    co_await start_server(server);
+
+    HttpClient client;
+    std::string url = "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/data.txt";
+
+    auto resp1 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp1.body(), "original");
+    NITRO_CHECK_EQ(resp1.getHeader("x-cache"), "MISS");
+
+    // modify file — mtime/etag changes → stale
+    // sleep 1s to ensure mtime changes (filesystem mtime precision may be 1s)
+    co_await nitrocoro::sleep(std::chrono::seconds(1));
+    dir.write("data.txt", "updated");
+
+    auto resp2 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp2.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(resp2.body(), "updated");
+    NITRO_CHECK_EQ(resp2.getHeader("x-cache"), "MISS");
+
+    co_await server.stop();
+}
+
+/** File exceeding cache_max_file_size is not cached: always reads from disk. */
+NITRO_TEST(static_files_cache_max_file_size)
+{
+    TempDir dir;
+    dir.write("big.txt", std::string(10, 'x'));
+
+    StaticFilesOptions opts;
+    opts.cache_ttl = 60;
+    opts.cache_max_file_size = 5; // only cache files <= 5 bytes
+
+    HttpServer server(0);
+    server.route("/*path", { "GET" }, staticFiles(dir.path.string(), std::move(opts)));
+    co_await start_server(server);
+
+    HttpClient client;
+    std::string url = "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/big.txt";
+
+    auto resp1 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp1.body(), std::string(10, 'x'));
+
+    // modify file — should be reflected immediately since not cached
+    dir.write("big.txt", std::string(10, 'y'));
+
+    auto resp2 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp2.body(), std::string(10, 'y'));
+
+    co_await server.stop();
+}
+
+/** cache_ttl=0 (default) disables cache: file changes are always reflected. */
+NITRO_TEST(static_files_cache_disabled)
+{
+    TempDir dir;
+    dir.write("data.txt", "v1");
+
+    HttpServer server(0);
+    server.route("/*path", { "GET" }, staticFiles(dir.path.string())); // cache_ttl=0
+    co_await start_server(server);
+
+    HttpClient client;
+    std::string url = "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/data.txt";
+
+    auto resp1 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp1.body(), "v1");
+
+    dir.write("data.txt", "v2");
+
+    auto resp2 = co_await client.get(url);
+    NITRO_CHECK_EQ(resp2.body(), "v2");
 
     co_await server.stop();
 }
