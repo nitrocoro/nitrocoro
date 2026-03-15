@@ -19,6 +19,13 @@
 #include <sys/stat.h>
 #include <unordered_map>
 
+#ifdef _WIN32
+#  include <io.h>
+#  ifndef S_ISREG
+#    define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#  endif
+#endif
+
 namespace nitrocoro::http
 {
 
@@ -60,10 +67,10 @@ std::unordered_map<std::string, std::string> StaticFilesOptions::defaultAcceptEn
 namespace
 {
 
-static constexpr size_t kChunkSize = 65536;
+constexpr size_t kChunkSize = 65536;
 
-static std::string_view mimeType(const std::string & ext,
-                                 const std::unordered_map<std::string, std::string> & mime_types)
+std::string_view mimeType(const std::string & ext,
+                          const std::unordered_map<std::string, std::string> & mime_types)
 {
     auto it = mime_types.find(ext);
     return it != mime_types.end() ? std::string_view(it->second) : "application/octet-stream";
@@ -71,7 +78,7 @@ static std::string_view mimeType(const std::string & ext,
 
 // Splits a comma-separated header value (e.g. Accept-Encoding) into trimmed tokens,
 // stripping optional whitespace and quality parameters (;q=...).
-static std::vector<std::string_view> splitTokens(std::string_view sv)
+std::vector<std::string_view> splitTokens(std::string_view sv)
 {
     std::vector<std::string_view> tokens;
     while (!sv.empty())
@@ -94,7 +101,7 @@ static std::vector<std::string_view> splitTokens(std::string_view sv)
 }
 
 // Generates a strong ETag from mtime and file size as per RFC 7232 §2.3.
-static std::string makeETag(time_t mtime, off_t size)
+std::string makeETag(time_t mtime, int64_t size)
 {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "\"%lx-%lx\"",
@@ -256,7 +263,7 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
 
             // Stat
             struct stat st{};
-            if (::stat(filePath.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+            if (::stat(filePath.string().c_str(), &st) != 0 || !S_ISREG(st.st_mode))
             {
                 resp.setStatus(404);
                 co_await resp.end();
@@ -314,7 +321,7 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                         continue;
                     fs::path candidate(filePath.string() + "." + extIt->second);
                     struct stat cst{};
-                    if (::stat(candidate.c_str(), &cst) == 0 && S_ISREG(cst.st_mode))
+                    if (::stat(candidate.string().c_str(), &cst) == 0 && S_ISREG(cst.st_mode))
                     {
                         actualPath = candidate;
                         st = cst;
@@ -387,7 +394,7 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
 
             // Stream file body
             std::unique_ptr<FILE, decltype(&std::fclose)> fp(
-                std::fopen(actualPath.c_str(), "rb"), &std::fclose);
+                std::fopen(actualPath.string().c_str(), "rb"), &std::fclose);
             if (!fp)
             {
                 resp.setStatus(500);
