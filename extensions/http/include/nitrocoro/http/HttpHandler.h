@@ -14,7 +14,7 @@
 namespace nitrocoro::http
 {
 
-using Params = std::unordered_map<std::string, std::string>;
+using PathParams = std::unordered_map<std::string, std::string>;
 
 // ── Abstract base ─────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ struct HttpHandlerBase
 {
     virtual Task<> invoke(HttpIncomingStream<HttpRequest> request,
                           HttpOutgoingStream<HttpResponse> response,
-                          Params params)
+                          PathParams params)
         = 0;
     virtual ~HttpHandlerBase() = default;
 };
@@ -32,7 +32,7 @@ using HttpHandlerPtr = std::shared_ptr<HttpHandlerBase>;
 // ── Concrete handler ──────────────────────────────────────────────────────────
 //
 // Supported signatures:
-//   (HttpIncomingStream<HttpRequest>, HttpOutgoingStream<HttpResponse>, Params)
+//   (HttpIncomingStream<HttpRequest>, HttpOutgoingStream<HttpResponse>, PathParams)
 //   (HttpIncomingStream<HttpRequest>, HttpOutgoingStream<HttpResponse>)
 //   (HttpOutgoingStream<HttpResponse>)
 
@@ -44,12 +44,12 @@ struct HttpHandler : HttpHandlerBase
 
     Task<> invoke(HttpIncomingStream<HttpRequest> request,
                   HttpOutgoingStream<HttpResponse> response,
-                  Params params) override
+                  PathParams params) override
     {
         using Req = HttpIncomingStream<HttpRequest>;
         using Resp = HttpOutgoingStream<HttpResponse>;
 
-        if constexpr (std::is_invocable_v<F, Req &&, Resp &&, Params>)
+        if constexpr (std::is_invocable_v<F, Req &&, Resp &&, PathParams>)
             co_await f_(std::move(request), std::move(response), std::move(params));
         else if constexpr (std::is_invocable_v<F, Req &&, Resp &&>)
             co_await f_(std::move(request), std::move(response));

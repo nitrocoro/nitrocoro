@@ -231,7 +231,7 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
          preCalc = std::move(preCalc),
          caches = std::make_shared<SchedulerCaches>()](HttpIncomingStream<HttpRequest> && req,
                                                        HttpOutgoingStream<HttpResponse> && resp,
-                                                       Params params) mutable -> Task<> {
+                                                       PathParams params) mutable -> Task<> {
             const fs::path & root = preCalc.root;
             const std::string & cacheControlValue = preCalc.cacheControlValue;
             FileCache * cache = caches->getCurrent();

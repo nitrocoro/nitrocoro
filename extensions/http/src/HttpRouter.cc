@@ -89,7 +89,7 @@ void HttpRouter::insertRadix(RadixNode & node, std::string_view path, const Meth
 static constexpr size_t kMaxPathLength = 2048;
 static constexpr size_t kMaxPathSegments = 32;
 
-const HttpRouter::Entry * HttpRouter::matchRadix(const RadixNode & node, std::string_view path, Params & params, size_t depth)
+const HttpRouter::Entry * HttpRouter::matchRadix(const RadixNode & node, std::string_view path, PathParams & params, size_t depth)
 {
     if (depth > kMaxPathSegments)
         return nullptr;
@@ -194,7 +194,7 @@ HttpRouter::RouteResult HttpRouter::route(HttpMethod method, const std::string &
     }
 
     // 2. radix (param / wildcard)
-    Params params;
+    PathParams params;
     if (const Entry * entry = matchRadix(radixRoot_, path, params))
     {
         auto r = lookupMethod(*entry);
@@ -208,7 +208,7 @@ HttpRouter::RouteResult HttpRouter::route(HttpMethod method, const std::string &
         std::smatch m;
         if (std::regex_match(path, m, r.regex))
         {
-            Params regexParams;
+            PathParams regexParams;
             for (size_t i = 1; i < m.size(); ++i)
                 regexParams["$" + std::to_string(i)] = m[i].str();
             auto result = lookupMethod(r.entry);

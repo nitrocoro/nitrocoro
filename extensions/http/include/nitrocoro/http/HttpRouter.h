@@ -92,7 +92,7 @@ struct MethodList
  * Any callable returning `Task<>` is accepted. Supported parameter forms:
  * @code
  * // Full signature
- * [](HttpIncomingStream<HttpRequest> req, HttpOutgoingStream<HttpResponse> resp, Params p) -> Task<> {}
+ * [](HttpIncomingStream<HttpRequest> req, HttpOutgoingStream<HttpResponse> resp, PathParams p) -> Task<> {}
  * // Without params
  * [](HttpIncomingStream<HttpRequest> req, HttpOutgoingStream<HttpResponse> resp) -> Task<> {}
  * // Response only
@@ -115,7 +115,7 @@ public:
         };
 
         HttpHandlerPtr handler;
-        Params params;
+        PathParams params;
         Reason reason = Reason::NotFound;
         std::string allowedMethods;
 
@@ -159,7 +159,7 @@ private:
     static void checkInvalidMethods(const MethodList & methods);
     static void addMethodToEntry(Entry & entry, HttpMethod method, const HttpHandlerPtr & handler);
     static void insertRadix(RadixNode & node, std::string_view path, const MethodList & methods, const HttpHandlerPtr & handler);
-    static const Entry * matchRadix(const RadixNode & node, std::string_view path, Params & params, size_t depth = 0);
+    static const Entry * matchRadix(const RadixNode & node, std::string_view path, PathParams & params, size_t depth = 0);
 
     std::unordered_map<std::string, Entry> exactRoutes_;
     RadixNode radixRoot_;
