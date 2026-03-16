@@ -102,8 +102,8 @@ NITRO_TEST(https_get)
         co_return std::make_shared<io::Stream>(tlsStream);
     });
 
-    server.route("/", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("Hello, HTTPS!");
+    server.route("/", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("Hello, HTTPS!");
     });
 
     Scheduler::current()->spawn([&]() -> Task<> { co_await server.start(); });
@@ -137,10 +137,10 @@ NITRO_TEST(https_post)
         co_return std::make_shared<io::Stream>(tlsStream);
     });
 
-    server.route("/echo", { "POST" }, [](auto && req, auto && resp) -> Task<> {
+    server.route("/echo", { "POST" }, [](auto req, auto resp) -> Task<> {
         utils::StringBuffer buffer;
-        auto body = co_await req.readToEnd(buffer);
-        co_await resp.end(buffer.extract());
+        auto body = co_await req->readToEnd(buffer);
+        co_await resp->end(buffer.extract());
     });
 
     Scheduler::current()->spawn([&]() -> Task<> { co_await server.start(); });
@@ -177,8 +177,8 @@ NITRO_TEST(https_large_body)
     const size_t largeSize = 128 * 1024; // 128 KB
     std::string largeBody(largeSize, 'x');
 
-    server.route("/large", { "GET" }, [largeBody](auto && req, auto && resp) -> Task<> {
-        co_await resp.end(largeBody);
+    server.route("/large", { "GET" }, [largeBody](auto req, auto resp) -> Task<> {
+        co_await resp->end(largeBody);
     });
 
     Scheduler::current()->spawn([&]() -> Task<> { co_await server.start(); });
@@ -212,12 +212,12 @@ NITRO_TEST(https_chunked)
         co_return std::make_shared<io::Stream>(tlsStream);
     });
 
-    server.route("/chunked", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        resp.setHeader(HttpHeader::NameCode::TransferEncoding, "chunked");
-        co_await resp.write("chunk1");
-        co_await resp.write("chunk2");
-        co_await resp.write("chunk3");
-        co_await resp.end();
+    server.route("/chunked", { "GET" }, [](auto req, auto resp) -> Task<> {
+        resp->setHeader(HttpHeader::NameCode::TransferEncoding, "chunked");
+        co_await resp->write("chunk1");
+        co_await resp->write("chunk2");
+        co_await resp->write("chunk3");
+        co_await resp->end();
     });
 
     Scheduler::current()->spawn([&]() -> Task<> { co_await server.start(); });
@@ -250,16 +250,16 @@ NITRO_TEST(https_multiple_requests)
         co_return std::make_shared<io::Stream>(tlsStream);
     });
 
-    server.route("/1", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("Response 1");
+    server.route("/1", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("Response 1");
     });
 
-    server.route("/2", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("Response 2");
+    server.route("/2", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("Response 2");
     });
 
-    server.route("/3", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("Response 3");
+    server.route("/3", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("Response 3");
     });
 
     Scheduler::current()->spawn([&]() -> Task<> { co_await server.start(); });
@@ -293,8 +293,8 @@ NITRO_TEST(http_without_upgrader)
 
     // No setStreamUpgrader() call - should work as plain HTTP
 
-    server.route("/", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("Plain HTTP");
+    server.route("/", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("Plain HTTP");
     });
 
     Scheduler::current()->spawn([&]() -> Task<> { co_await server.start(); });

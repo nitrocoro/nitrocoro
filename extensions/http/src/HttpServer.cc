@@ -188,27 +188,27 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         auto contentLength = parsed.message.contentLength;
 
         auto bodyReader = BodyReader::create(stream, buffer, transferMode, contentLength);
-        auto request = HttpIncomingStream<HttpRequest>(std::move(parsed.message), bodyReader);
+        auto request = std::make_shared<IncomingRequest>(std::move(parsed.message), bodyReader);
 
-        auto method = request.method();
+        auto method = request->method();
         Promise<> finishedPromise(scheduler_);
         auto finishedFuture = finishedPromise.get_future();
         bool ignoreBody = (method == methods::Head);
-        HttpOutgoingStream<HttpResponse> response(stream, std::move(finishedPromise), std::move(prevFuture), ignoreBody, config_.send_date_header);
+        auto response = std::make_shared<ServerResponse>(stream, std::move(finishedPromise), std::move(prevFuture), ignoreBody, config_.send_date_header);
         prevFuture = std::move(finishedFuture);
-        response.setCloseConnection(!keepAlive);
+        response->setCloseConnection(!keepAlive);
 
-        if (requestUpgrader_ && isUpgradeRequest(request))
+        if (requestUpgrader_ && isUpgradeRequest(*request))
         {
-            bool taken = co_await requestUpgrader_(request, response, stream);
+            bool taken = co_await requestUpgrader_(*request, *response, stream);
             if (taken)
                 co_return;
         }
 
         if (method == methods::_Invalid)
         {
-            response.setStatus(StatusCode::k400BadRequest);
-            co_await response.end("Bad Request");
+            response->setStatus(StatusCode::k400BadRequest);
+            co_await response->end("Bad Request");
             if (!bodyReader->isComplete())
                 co_await bodyReader->drain();
             if (!keepAlive)
@@ -219,7 +219,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             continue;
         }
 
-        auto result = router_->route(method, request.path());
+        auto result = router_->route(method, request->path());
         if (result.reason != HttpRouter::RouteResult::Reason::Ok || !result.handler)
         {
             // TODO: custom handler? 404 could use * route?
@@ -227,33 +227,33 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             {
                 if (method == methods::Options)
                 {
-                    response.setStatus(StatusCode::k200OK);
-                    response.setHeader(HttpHeader::NameCode::Allow, result.allowedMethods);
-                    co_await response.end();
+                    response->setStatus(StatusCode::k200OK);
+                    response->setHeader(HttpHeader::NameCode::Allow, result.allowedMethods);
+                    co_await response->end();
                 }
                 else
                 {
-                    response.setStatus(StatusCode::k405MethodNotAllowed);
-                    response.setHeader(HttpHeader::NameCode::Allow, result.allowedMethods);
-                    co_await response.end("Method Not Allowed");
+                    response->setStatus(StatusCode::k405MethodNotAllowed);
+                    response->setHeader(HttpHeader::NameCode::Allow, result.allowedMethods);
+                    co_await response->end("Method Not Allowed");
                 }
             }
             else
             {
-                response.setStatus(StatusCode::k404NotFound);
-                co_await response.end("Not Found");
+                response->setStatus(StatusCode::k404NotFound);
+                co_await response->end("Not Found");
             }
         }
         else
         {
             // TODO: refine if logics
-            auto expect = request.getHeader(HttpHeader::NameCode::Expect);
+            auto expect = request->getHeader(HttpHeader::NameCode::Expect);
             if (!expect.empty())
             {
                 if (expect != "100-continue")
                 {
-                    response.setStatus(StatusCode::k417ExpectationFailed);
-                    co_await response.end("Expectation Failed");
+                    response->setStatus(StatusCode::k417ExpectationFailed);
+                    co_await response->end("Expectation Failed");
                     if (!bodyReader->isComplete())
                         co_await bodyReader->drain();
                     if (!keepAlive)
@@ -269,7 +269,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             std::exception_ptr exPtr;
             try
             {
-                co_await result.handler->invoke(std::move(request), std::move(response), std::move(result.params));
+                co_await result.handler->invoke(request, response, std::move(result.params));
             }
             catch (const std::exception & ex)
             {

@@ -202,10 +202,10 @@ NITRO_TEST(cookie_request_accessor)
     parser.parseLine("GET / HTTP/1.1");
     parser.parseLine("Cookie: a=1; b=2");
     parser.parseLine("");
-    HttpRequestAccessor req(parser.extractResult().message);
-    NITRO_CHECK_EQ(req.getCookie("a"), "1");
-    NITRO_CHECK_EQ(req.getCookie("b"), "2");
-    NITRO_CHECK(req.getCookie("missing").empty());
+    HttpRequestAccessor accessor(parser.extractResult().message);
+    NITRO_CHECK_EQ(accessor.getCookie("a"), "1");
+    NITRO_CHECK_EQ(accessor.getCookie("b"), "2");
+    NITRO_CHECK(accessor.getCookie("missing").empty());
     co_return;
 }
 
@@ -270,14 +270,14 @@ NITRO_TEST(cookie_integration_server_set)
     uint16_t port = 19901;
     Scheduler::current()->spawn([port]() -> Task<> {
         HttpServer server(port);
-        server.route("/set", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-            resp.addCookie(Cookie{
+        server.route("/set", { "GET" }, [](auto req, auto resp) -> Task<> {
+            resp->addCookie(Cookie{
                 .name = "session",
                 .value = "abc123",
                 .path = "/",
                 .httpOnly = true,
             });
-            co_await resp.end("ok");
+            co_await resp->end("ok");
         });
         co_await server.start();
     });
@@ -300,8 +300,8 @@ NITRO_TEST(cookie_integration_client_send)
     uint16_t port = 19902;
     Scheduler::current()->spawn([port]() -> Task<> {
         HttpServer server(port);
-        server.route("/echo", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-            co_await resp.end(req.getCookie("token"));
+        server.route("/echo", { "GET" }, [](auto req, auto resp) -> Task<> {
+            co_await resp->end(req->getCookie("token"));
         });
         co_await server.start();
     });
@@ -326,11 +326,11 @@ NITRO_TEST(cookie_integration_multiple_set_cookies)
     uint16_t port = 19903;
     Scheduler::current()->spawn([port]() -> Task<> {
         HttpServer server(port);
-        server.route("/multi", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-            resp.addCookie(Cookie{ .name = "a", .value = "1" });
-            resp.addCookie(Cookie{ .name = "b", .value = "2", .secure = true });
-            resp.addCookie(Cookie{ .name = "c", .value = "3", .sameSite = Cookie::SameSite::Strict });
-            co_await resp.end();
+        server.route("/multi", { "GET" }, [](auto req, auto resp) -> Task<> {
+            resp->addCookie(Cookie{ .name = "a", .value = "1" });
+            resp->addCookie(Cookie{ .name = "b", .value = "2", .secure = true });
+            resp->addCookie(Cookie{ .name = "c", .value = "3", .sameSite = Cookie::SameSite::Strict });
+            co_await resp->end();
         });
         co_await server.start();
     });

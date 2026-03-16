@@ -92,11 +92,9 @@ struct MethodList
  * Any callable returning `Task<>` is accepted. Supported parameter forms:
  * @code
  * // Full signature
- * [](HttpIncomingStream<HttpRequest> req, HttpOutgoingStream<HttpResponse> resp, PathParams p) -> Task<> {}
+ * [](IncomingRequestPtr req, ServerResponsePtr resp, PathParams p) -> Task<> {}
  * // Without params
- * [](HttpIncomingStream<HttpRequest> req, HttpOutgoingStream<HttpResponse> resp) -> Task<> {}
- * // Response only
- * [](HttpOutgoingStream<HttpResponse> resp) -> Task<> {}
+ * [](IncomingRequestPtr req, ServerResponsePtr resp) -> Task<> {}
  * @endcode
  */
 

@@ -14,24 +14,24 @@ Task<> echo_server(uint16_t port)
 {
     HttpServer server(port);
 
-    server.route("/stream-echo", { "POST" }, [](auto && req, auto && resp) -> Task<> {
-        resp.setStatus(StatusCode::k200OK);
-        resp.setHeader(HttpHeader::NameCode::ContentType, "text/plain");
-        auto ctl = req.getHeader(HttpHeader::NameCode::ContentLength);
+    server.route("/stream-echo", { "POST" }, [](auto req, auto resp) -> Task<> {
+        resp->setStatus(StatusCode::k200OK);
+        resp->setHeader(HttpHeader::NameCode::ContentType, "text/plain");
+        auto ctl = req->getHeader(HttpHeader::NameCode::ContentLength);
         if (!ctl.empty())
-            resp.setHeader(HttpHeader::NameCode::ContentLength, std::string{ ctl });
+            resp->setHeader(HttpHeader::NameCode::ContentLength, std::string{ ctl });
 
-        co_await resp.write({});
+        co_await resp->write({});
 
         while (true)
         {
-            auto chunk = co_await req.read(1024);
+            auto chunk = co_await req->read(1024);
             if (chunk.empty())
                 break;
-            co_await resp.write(chunk);
+            co_await resp->write(chunk);
         }
 
-        co_await resp.end();
+        co_await resp->end();
     });
 
     co_await server.start();

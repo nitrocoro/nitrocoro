@@ -229,8 +229,8 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
     return makeHttpHandler(
         [opts = std::move(opts),
          preCalc = std::move(preCalc),
-         caches = std::make_shared<SchedulerCaches>()](HttpIncomingStream<HttpRequest> && req,
-                                                       HttpOutgoingStream<HttpResponse> && resp,
+         caches = std::make_shared<SchedulerCaches>()](IncomingRequestPtr req,
+                                                       ServerResponsePtr resp,
                                                        PathParams params) mutable -> Task<> {
             const fs::path & root = preCalc.root;
             const std::string & cacheControlValue = preCalc.cacheControlValue;
@@ -253,8 +253,8 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
             auto rel = filePath.lexically_relative(root);
             if (rel.empty() || *rel.begin() == "..")
             {
-                resp.setStatus(403);
-                co_await resp.end();
+                resp->setStatus(403);
+                co_await resp->end();
                 co_return;
             }
 
@@ -262,8 +262,8 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
             struct stat st{};
             if (::stat(filePath.string().c_str(), &st) != 0 || !S_ISREG(st.st_mode))
             {
-                resp.setStatus(404);
-                co_await resp.end();
+                resp->setStatus(404);
+                co_await resp->end();
                 co_return;
             }
 
@@ -280,14 +280,14 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                 std::strftime(lm, sizeof(lm), "%a, %d %b %Y %H:%M:%S GMT", &tm);
                 lastModified = lm;
 
-                const auto & ims = req.getHeader(HttpHeader::NameCode::IfModifiedSince);
+                const auto & ims = req->getHeader(HttpHeader::NameCode::IfModifiedSince);
                 if (!ims.empty() && ims == lastModified)
                 {
-                    resp.setStatus(304);
-                    co_await resp.end();
+                    resp->setStatus(304);
+                    co_await resp->end();
                     co_return;
                 }
-                resp.setHeader(HttpHeader::NameCode::LastModified, lastModified);
+                resp->setHeader(HttpHeader::NameCode::LastModified, lastModified);
             }
 
             // ETag / 304
@@ -295,20 +295,20 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
             if (opts.enable_etag)
             {
                 etag = makeETag(st.st_mtime, st.st_size);
-                const auto & ifNoneMatch = req.getHeader(HttpHeader::NameCode::IfNoneMatch);
+                const auto & ifNoneMatch = req->getHeader(HttpHeader::NameCode::IfNoneMatch);
                 if (!ifNoneMatch.empty() && ifNoneMatch == etag)
                 {
-                    resp.setStatus(304);
-                    co_await resp.end();
+                    resp->setStatus(304);
+                    co_await resp->end();
                     co_return;
                 }
-                resp.setHeader("ETag", etag);
+                resp->setHeader("ETag", etag);
             }
 
             // Pre-compressed static file: iterate Accept-Encoding in order
             fs::path actualPath = filePath;
             std::string selectedEncoding;
-            const auto & acceptEncoding = req.getHeader(HttpHeader::NameCode::AcceptEncoding);
+            const auto & acceptEncoding = req->getHeader(HttpHeader::NameCode::AcceptEncoding);
             if (!acceptEncoding.empty() && !opts.accept_encodings.empty())
             {
                 for (auto token : splitTokens(acceptEncoding))
@@ -351,41 +351,41 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                     }
                     else
                     {
-                        resp.setStatus(200);
-                        resp.setHeader(HttpHeader::NameCode::ContentType, cached->mime_type);
-                        resp.setHeader(HttpHeader::NameCode::LastModified, cached->last_modified);
+                        resp->setStatus(200);
+                        resp->setHeader(HttpHeader::NameCode::ContentType, cached->mime_type);
+                        resp->setHeader(HttpHeader::NameCode::LastModified, cached->last_modified);
                         if (!cached->etag.empty())
-                            resp.setHeader("ETag", cached->etag);
+                            resp->setHeader("ETag", cached->etag);
                         if (!cached->content_encoding.empty())
-                            resp.setHeader(HttpHeader::NameCode::ContentEncoding, cached->content_encoding);
-                        resp.setHeader(HttpHeader::NameCode::ContentLength, std::to_string(cached->data.size()));
-                        resp.setHeader(HttpHeader::NameCode::CacheControl, cacheControlValue);
+                            resp->setHeader(HttpHeader::NameCode::ContentEncoding, cached->content_encoding);
+                        resp->setHeader(HttpHeader::NameCode::ContentLength, std::to_string(cached->data.size()));
+                        resp->setHeader(HttpHeader::NameCode::CacheControl, cacheControlValue);
                         if (!opts.cache_header.empty())
-                            resp.setHeader(opts.cache_header, "HIT");
+                            resp->setHeader(opts.cache_header, "HIT");
 
                         // Skip body when HEAD
-                        if (req.method() != methods::Head)
-                            co_await resp.write(cached->data.data(), cached->data.size());
-                        co_await resp.end();
+                        if (req->method() != methods::Head)
+                            co_await resp->write(cached->data.data(), cached->data.size());
+                        co_await resp->end();
                         co_return;
                     }
                 }
             }
 
             // Headers
-            resp.setStatus(200);
+            resp->setStatus(200);
             std::string mimeTypeStr(mimeType(filePath.extension().string(), opts.mime_types));
-            resp.setHeader(HttpHeader::NameCode::ContentType, mimeTypeStr);
-            resp.setHeader(HttpHeader::NameCode::ContentLength, std::to_string(st.st_size));
+            resp->setHeader(HttpHeader::NameCode::ContentType, mimeTypeStr);
+            resp->setHeader(HttpHeader::NameCode::ContentLength, std::to_string(st.st_size));
             if (!selectedEncoding.empty())
-                resp.setHeader(HttpHeader::NameCode::ContentEncoding, selectedEncoding);
+                resp->setHeader(HttpHeader::NameCode::ContentEncoding, selectedEncoding);
 
-            resp.setHeader(HttpHeader::NameCode::CacheControl, cacheControlValue);
+            resp->setHeader(HttpHeader::NameCode::CacheControl, cacheControlValue);
 
             // HEAD: headers only
-            if (req.method() == methods::Head)
+            if (req->method() == methods::Head)
             {
-                co_await resp.end();
+                co_await resp->end();
                 co_return;
             }
 
@@ -394,20 +394,20 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                 std::fopen(actualPath.string().c_str(), "rb"), &std::fclose);
             if (!fp)
             {
-                resp.setStatus(500);
-                co_await resp.end();
+                resp->setStatus(500);
+                co_await resp->end();
                 co_return;
             }
 
             if (cacheEnabled)
             {
                 if (!opts.cache_header.empty())
-                    resp.setHeader(opts.cache_header, "MISS");
+                    resp->setHeader(opts.cache_header, "MISS");
                 std::string fileData(static_cast<size_t>(st.st_size), '\0');
                 if (std::fread(fileData.data(), 1, fileData.size(), fp.get()) != fileData.size())
                 {
-                    resp.setStatus(500);
-                    co_await resp.end();
+                    resp->setStatus(500);
+                    co_await resp->end();
                     co_return;
                 }
                 const CacheNode & node = cache->put(
@@ -422,7 +422,7 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                     },
                     opts.cache_max_cache_size);
 
-                co_await resp.write(node.data.data(), node.data.size());
+                co_await resp->write(node.data.data(), node.data.size());
             }
             else
             {
@@ -434,12 +434,12 @@ HttpHandlerPtr staticFiles(std::string_view root, StaticFilesOptions opts)
                     size_t n = std::fread(buf, 1, std::min(remaining, kChunkSize), fp.get());
                     if (n == 0)
                         break;
-                    co_await resp.write(buf, n);
+                    co_await resp->write(buf, n);
                     remaining -= n;
                 }
             }
 
-            co_await resp.end();
+            co_await resp->end();
         });
 }
 

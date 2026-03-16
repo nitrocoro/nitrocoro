@@ -57,28 +57,28 @@ NITRO_TEST(http_parser_request_query_accessor)
         HttpParser<HttpRequest> parser;
         parser.parseLine("GET /search?q=hello+world&page=1 HTTP/1.1");
         parser.parseLine("");
-        HttpRequestAccessor req(parser.extractResult().message);
-        NITRO_CHECK_EQ(req.queryString(), "q=hello+world&page=1");
-        NITRO_CHECK_EQ(req.getQuery("q"), "hello world");
-        NITRO_CHECK_EQ(req.getQuery("page"), "1");
-        NITRO_CHECK(req.getQuery("missing").empty());
+        HttpRequestAccessor accessor(parser.extractResult().message);
+        NITRO_CHECK_EQ(accessor.queryString(), "q=hello+world&page=1");
+        NITRO_CHECK_EQ(accessor.getQuery("q"), "hello world");
+        NITRO_CHECK_EQ(accessor.getQuery("page"), "1");
+        NITRO_CHECK(accessor.getQuery("missing").empty());
     }
     // first-wins on duplicate keys
     {
         HttpParser<HttpRequest> parser;
         parser.parseLine("GET /search?tag=a&tag=b HTTP/1.1");
         parser.parseLine("");
-        HttpRequestAccessor req(parser.extractResult().message);
-        NITRO_CHECK_EQ(req.getQuery("tag"), "a");
+        HttpRequestAccessor accessor(parser.extractResult().message);
+        NITRO_CHECK_EQ(accessor.getQuery("tag"), "a");
     }
     // no query string
     {
         HttpParser<HttpRequest> parser;
         parser.parseLine("GET /search HTTP/1.1");
         parser.parseLine("");
-        HttpRequestAccessor req(parser.extractResult().message);
-        NITRO_CHECK(req.queryString().empty());
-        NITRO_CHECK(req.queries().empty());
+        HttpRequestAccessor accessor(parser.extractResult().message);
+        NITRO_CHECK(accessor.queryString().empty());
+        NITRO_CHECK(accessor.queries().empty());
     }
     co_return;
 }
@@ -91,8 +91,8 @@ NITRO_TEST(http_parser_multi_queries)
         parser.parseLine("GET /search?tag=a&tag=b&tag=c HTTP/1.1");
         parser.parseLine("");
         auto result = parser.extractResult();
-        HttpRequestAccessor req(std::move(result.message));
-        auto mq = req.multiQueries();
+        HttpRequestAccessor accessor(std::move(result.message));
+        auto mq = accessor.multiQueries();
         NITRO_CHECK_EQ(mq["tag"].size(), 3);
         NITRO_CHECK_EQ(mq["tag"][0], "a");
         NITRO_CHECK_EQ(mq["tag"][1], "b");
@@ -104,8 +104,8 @@ NITRO_TEST(http_parser_multi_queries)
         parser.parseLine("GET /search?key=%2B%26%3D&val=%E4%B8%AD%E6%96%87 HTTP/1.1");
         parser.parseLine("");
         auto result = parser.extractResult();
-        HttpRequestAccessor req(std::move(result.message));
-        auto mq = req.multiQueries();
+        HttpRequestAccessor accessor(std::move(result.message));
+        auto mq = accessor.multiQueries();
         NITRO_CHECK_EQ(mq["key"][0], "+&=");
         NITRO_CHECK_EQ(mq["val"][0], "中文");
     }
@@ -115,8 +115,8 @@ NITRO_TEST(http_parser_multi_queries)
         parser.parseLine("GET /search?flag&other=1 HTTP/1.1");
         parser.parseLine("");
         auto result = parser.extractResult();
-        HttpRequestAccessor req(std::move(result.message));
-        auto mq = req.multiQueries();
+        HttpRequestAccessor accessor(std::move(result.message));
+        auto mq = accessor.multiQueries();
         NITRO_CHECK(mq.contains("flag"));
         NITRO_CHECK(mq["flag"].empty());
         NITRO_CHECK_EQ(mq["other"][0], "1");
@@ -127,8 +127,8 @@ NITRO_TEST(http_parser_multi_queries)
         parser.parseLine("GET /search HTTP/1.1");
         parser.parseLine("");
         auto result = parser.extractResult();
-        HttpRequestAccessor req(std::move(result.message));
-        NITRO_CHECK(req.multiQueries().empty());
+        HttpRequestAccessor accessor(std::move(result.message));
+        NITRO_CHECK(accessor.multiQueries().empty());
     }
     co_return;
 }

@@ -20,8 +20,8 @@ using PathParams = std::unordered_map<std::string, std::string>;
 
 struct HttpHandlerBase
 {
-    virtual Task<> invoke(HttpIncomingStream<HttpRequest> request,
-                          HttpOutgoingStream<HttpResponse> response,
+    virtual Task<> invoke(IncomingRequestPtr request,
+                          ServerResponsePtr response,
                           PathParams params)
         = 0;
     virtual ~HttpHandlerBase() = default;
@@ -42,19 +42,17 @@ struct HttpHandler : HttpHandlerBase
     explicit HttpHandler(F f)
         : f_(std::move(f)) {}
 
-    Task<> invoke(HttpIncomingStream<HttpRequest> request,
-                  HttpOutgoingStream<HttpResponse> response,
+    Task<> invoke(IncomingRequestPtr request,
+                  ServerResponsePtr response,
                   PathParams params) override
     {
-        using Req = HttpIncomingStream<HttpRequest>;
-        using Resp = HttpOutgoingStream<HttpResponse>;
+        using ReqPtr = IncomingRequestPtr;
+        using RespPtr = ServerResponsePtr;
 
-        if constexpr (std::is_invocable_v<F, Req &&, Resp &&, PathParams>)
-            co_await f_(std::move(request), std::move(response), std::move(params));
-        else if constexpr (std::is_invocable_v<F, Req &&, Resp &&>)
-            co_await f_(std::move(request), std::move(response));
-        else if constexpr (std::is_invocable_v<F, Resp &&>)
-            co_await f_(std::move(response));
+        if constexpr (std::is_invocable_v<F, ReqPtr, RespPtr, PathParams>)
+            co_await f_(request, response, std::move(params));
+        else if constexpr (std::is_invocable_v<F, ReqPtr, RespPtr>)
+            co_await f_(request, response);
         else
             static_assert(sizeof(F) == 0, "Unsupported handler signature");
     }

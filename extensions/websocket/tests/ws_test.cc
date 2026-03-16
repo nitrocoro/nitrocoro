@@ -47,7 +47,7 @@ static Task<> sendMaskedText(net::TcpConnection & conn, std::string_view text)
     uint8_t maskBit = 0x80;
     size_t len = text.size();
     if (len < 126)
-        frame.push_back(maskBit | uint8_t(len));
+        frame.push_back(maskBit | static_cast<uint8_t>(len));
     else if (len < 65536)
     {
         frame.push_back(maskBit | 126);
@@ -57,7 +57,7 @@ static Task<> sendMaskedText(net::TcpConnection & conn, std::string_view text)
     uint8_t mask[4] = { 0x12, 0x34, 0x56, 0x78 };
     frame.insert(frame.end(), mask, mask + 4);
     for (size_t i = 0; i < len; ++i)
-        frame.push_back(uint8_t(text[i]) ^ mask[i % 4]);
+        frame.push_back(static_cast<uint8_t>(text[i]) ^ mask[i % 4]);
     co_await conn.write(frame.data(), frame.size());
 }
 
@@ -75,7 +75,7 @@ static Task<std::string> recvTextFrame(net::TcpConnection & conn)
         got = 0;
         while (got < 2)
             got += co_await conn.read(ext + got, 2 - got);
-        payloadLen = (uint64_t(ext[0]) << 8) | ext[1];
+        payloadLen = (static_cast<uint64_t>(ext[0]) << 8) | ext[1];
     }
     std::string payload(payloadLen, '\0');
     got = 0;
@@ -139,8 +139,8 @@ NITRO_TEST(ws_echo)
 NITRO_TEST(ws_http_coexist)
 {
     http::HttpServer server(0);
-    server.route("/ping", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("pong");
+    server.route("/ping", { "GET" }, [](auto, auto resp) -> Task<> {
+        co_await resp->end("pong");
     });
     WsServer ws;
     ws.route("/ws", [](WsConnection & conn) -> Task<> {

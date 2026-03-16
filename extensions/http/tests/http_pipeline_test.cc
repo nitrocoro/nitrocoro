@@ -54,8 +54,8 @@ static Task<std::pair<std::string, std::string>> readResponse(
 NITRO_TEST(http_pipeline_gets)
 {
     HttpServer server(0);
-    server.route("/echo", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end(req.getQuery("v"));
+    server.route("/echo", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end(req->getQuery("v"));
     });
     co_await start_server(server);
 
@@ -83,12 +83,12 @@ NITRO_TEST(http_pipeline_gets)
 NITRO_TEST(http_pipeline_chunked_then_gets)
 {
     HttpServer server(0);
-    server.route("/echo", { "POST" }, [](auto && req, auto && resp) -> Task<> {
-        auto complete = co_await req.toCompleteRequest();
-        co_await resp.end(complete.body());
+    server.route("/echo", { "POST" }, [](auto req, auto resp) -> Task<> {
+        auto complete = co_await req->toCompleteRequest();
+        co_await resp->end(complete.body());
     });
-    server.route("/ping", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("pong");
+    server.route("/ping", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("pong");
     });
     co_await start_server(server);
 
@@ -129,9 +129,9 @@ NITRO_TEST(http_pipeline_chunked_then_gets)
 NITRO_TEST(http_pipeline_content_length_posts)
 {
     HttpServer server(0);
-    server.route("/echo", { "POST" }, [](auto && req, auto && resp) -> Task<> {
-        auto complete = co_await req.toCompleteRequest();
-        co_await resp.end(complete.body());
+    server.route("/echo", { "POST" }, [](auto req, auto resp) -> Task<> {
+        auto complete = co_await req->toCompleteRequest();
+        co_await resp->end(complete.body());
     });
     co_await start_server(server);
 
@@ -165,12 +165,12 @@ NITRO_TEST(http_pipeline_content_length_posts)
 NITRO_TEST(http_pipeline_chunked_with_trailer)
 {
     HttpServer server(0);
-    server.route("/echo", { "POST" }, [](auto && req, auto && resp) -> Task<> {
-        auto complete = co_await req.toCompleteRequest();
-        co_await resp.end(complete.body());
+    server.route("/echo", { "POST" }, [](auto req, auto resp) -> Task<> {
+        auto complete = co_await req->toCompleteRequest();
+        co_await resp->end(complete.body());
     });
-    server.route("/ping", { "GET" }, [](auto && req, auto && resp) -> Task<> {
-        co_await resp.end("pong");
+    server.route("/ping", { "GET" }, [](auto req, auto resp) -> Task<> {
+        co_await resp->end("pong");
     });
     co_await start_server(server);
 
