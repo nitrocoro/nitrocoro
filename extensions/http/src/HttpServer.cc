@@ -294,7 +294,6 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
                     }
                 };
                 co_await invokeChain(invokeChain, 0, request, response);
-                co_await response->flush();
             }
             catch (const std::exception & ex)
             {
@@ -309,9 +308,17 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             // TODO: custom exception handler
             if (exPtr)
             {
-                // TODO: should we send 500 and continue the connection?
-                co_await stream->shutdown();
-                break;
+                keepAlive = false;
+                if (!response->sendStarted())
+                {
+                    response->setStatus(StatusCode::k500InternalServerError);
+                    response->setBody("Internal Server Error");
+                    co_await response->flush();
+                }
+            }
+            else
+            {
+                co_await response->flush();
             }
         }
 

@@ -51,6 +51,7 @@ public:
     void setBody(const char * data, size_t len);
     void setBody(BodyStream bodyStream);
     Task<> flush();
+    bool sendStarted() const { return startSending_; }
 
 protected:
     static const char * getDefaultReason(uint16_t code);

@@ -168,6 +168,30 @@ NITRO_TEST(middleware_after_override_status_and_header)
     co_await server.stop();
 }
 
+/** Middleware throws before writing: server returns 500, server keeps accepting. */
+NITRO_TEST(middleware_throws)
+{
+    HttpServer server(0);
+    server.use([](auto req, auto resp, auto next) -> Task<> {
+        throw std::runtime_error("middleware error");
+        co_return;
+    });
+    server.route("/", { "GET" }, [](auto req, auto resp) {
+        resp->setBody("ok");
+    });
+    co_await start_server(server);
+
+    std::string base = "http://127.0.0.1:" + std::to_string(server.listeningPort());
+
+    auto resp = co_await HttpClient{}.get(base + "/");
+    NITRO_CHECK_EQ(resp.statusCode(), StatusCode::k500InternalServerError);
+
+    auto resp2 = co_await HttpClient{}.get(base + "/");
+    NITRO_CHECK_EQ(resp2.statusCode(), StatusCode::k500InternalServerError);
+
+    co_await server.stop();
+}
+
 int main(int argc, char ** argv)
 {
     return nitrocoro::test::run_all(argc, argv);

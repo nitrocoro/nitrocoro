@@ -307,7 +307,7 @@ NITRO_TEST(http_options_not_found)
     co_await server.stop();
 }
 
-/** Handler throws: connection is closed, server continues accepting new connections. */
+/** Handler throws before writing: server returns 500, connection closes, server keeps accepting. */
 NITRO_TEST(http_handler_throws)
 {
     HttpServer server(0);
@@ -321,16 +321,17 @@ NITRO_TEST(http_handler_throws)
 
     std::string base = "http://127.0.0.1:" + std::to_string(server.listeningPort());
 
-    // Handler throws: connection should be closed, client gets an exception
-    NITRO_CHECK_THROWS(co_await HttpClient{}.get(base + "/throw"));
+    auto resp = co_await HttpClient{}.get(base + "/throw");
+    NITRO_CHECK_EQ(resp.statusCode(), StatusCode::k500InternalServerError);
 
     // Server still works after handler threw
-    auto resp = co_await HttpClient{}.get(base + "/ok");
-    NITRO_CHECK_EQ(resp.statusCode(), StatusCode::k200OK);
-    NITRO_CHECK_EQ(resp.body(), "ok");
+    auto resp2 = co_await HttpClient{}.get(base + "/ok");
+    NITRO_CHECK_EQ(resp2.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(resp2.body(), "ok");
 
     co_await server.stop();
 }
+
 
 /** Chunked POST followed by GET on the same keep-alive connection. */
 NITRO_TEST(http_chunked_keepalive)
