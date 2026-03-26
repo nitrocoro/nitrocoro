@@ -206,7 +206,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
 
         if (requestUpgrader_ && isUpgradeRequest(*request))
         {
-            bool taken = co_await requestUpgrader_(*request, *response, stream);
+            bool taken = co_await requestUpgrader_(request, response, stream);
             if (taken)
                 co_return;
         }

@@ -25,39 +25,39 @@ void WsServer::route(const std::string & path, Handler handler)
 
 void WsServer::attachTo(http::HttpServer & server)
 {
-    server.setRequestUpgrader([this](http::HttpIncomingStream<http::HttpRequest> & req,
-                                     http::HttpOutgoingMessage<http::HttpResponse> & resp,
+    server.setRequestUpgrader([this](http::IncomingRequestPtr req,
+                                     http::ServerResponsePtr resp,
                                      io::StreamPtr stream) -> Task<bool> {
         co_return co_await handleUpgrade(req, resp, std::move(stream));
     });
 }
 
-Task<bool> WsServer::handleUpgrade(http::HttpIncomingStream<http::HttpRequest> & req,
-                                   http::HttpOutgoingMessage<http::HttpResponse> & resp,
+Task<bool> WsServer::handleUpgrade(http::IncomingRequestPtr req,
+                                   http::ServerResponsePtr resp,
                                    io::StreamPtr stream)
 {
     using http::HttpHeader;
 
     // Only handle WebSocket upgrades
-    auto & upgrade = req.getHeader(HttpHeader::NameCode::Upgrade);
+    auto & upgrade = req->getHeader(HttpHeader::NameCode::Upgrade);
     if (HttpHeader::toLower(upgrade) != "websocket")
         co_return false;
 
-    auto it = routes_.find(std::string(req.path()));
+    auto it = routes_.find(req->path());
     if (it == routes_.end())
         co_return false;
 
-    auto & key = req.getHeader(HttpHeader::NameCode::SecWebSocketKey);
+    auto & key = req->getHeader(HttpHeader::NameCode::SecWebSocketKey);
     if (key.empty())
         co_return false;
 
     std::string accept = computeAccept(key);
 
-    resp.setStatus(http::StatusCode::k101SwitchingProtocols);
-    resp.setHeader(HttpHeader::NameCode::Upgrade, "websocket");
-    resp.setHeader(HttpHeader::NameCode::Connection, "Upgrade");
-    resp.setHeader(HttpHeader::NameCode::SecWebSocketAccept, accept);
-    co_await resp.flush();
+    resp->setStatus(http::StatusCode::k101SwitchingProtocols);
+    resp->setHeader(HttpHeader::NameCode::Upgrade, "websocket");
+    resp->setHeader(HttpHeader::NameCode::Connection, "Upgrade");
+    resp->setHeader(HttpHeader::NameCode::SecWebSocketAccept, accept);
+    co_await resp->flush();
 
     WsConnection conn(std::move(stream));
     co_await it->second(conn);
