@@ -59,10 +59,10 @@ public:
     void setBody(std::string body);
     void setBody(const char * data, size_t len);
     void setBody(BodyWriterFn bodyWriterFn);
-    Task<> flush();
     bool sendStarted() const { return startSending_; }
 
 protected:
+    Task<> flush();
     static const char * getDefaultReason(uint16_t code);
     void buildHeaders(std::string & buf);
 
@@ -98,6 +98,8 @@ public:
     {
     }
 
+    Task<> flush() { return detail::HttpOutgoingMessageBase<HttpRequest>::flush(); }
+
     void setMethod(HttpMethod method) { data_.method = method; }
     void setMethod(std::string_view method) { data_.method = HttpMethod::fromString(method); }
     void setPath(const std::string & path) { data_.path = path; }
@@ -113,6 +115,8 @@ template <>
 class HttpOutgoingMessage<HttpResponse>
     : public detail::HttpOutgoingMessageBase<HttpResponse>
 {
+    friend class HttpServer;
+
 public:
     explicit HttpOutgoingMessage(io::StreamPtr stream,
                                  bool ignoreBody = false,

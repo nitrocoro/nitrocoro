@@ -26,30 +26,28 @@ void WsServer::route(const std::string & path, Handler handler)
 void WsServer::attachTo(http::HttpServer & server)
 {
     server.setRequestUpgrader([this](http::IncomingRequestPtr req,
-                                     http::ServerResponsePtr resp,
-                                     io::StreamPtr stream) -> Task<bool> {
-        co_return co_await handleUpgrade(req, resp, std::move(stream));
+                                     http::ServerResponsePtr resp) -> Task<std::optional<http::HttpServer::StreamHandler>> {
+        co_return co_await handleUpgrade(req, resp);
     });
 }
 
-Task<bool> WsServer::handleUpgrade(http::IncomingRequestPtr req,
-                                   http::ServerResponsePtr resp,
-                                   io::StreamPtr stream)
+Task<std::optional<http::HttpServer::StreamHandler>> WsServer::handleUpgrade(http::IncomingRequestPtr req,
+                                                                             http::ServerResponsePtr resp)
 {
     using http::HttpHeader;
 
     // Only handle WebSocket upgrades
     auto & upgrade = req->getHeader(HttpHeader::NameCode::Upgrade);
     if (HttpHeader::toLower(upgrade) != "websocket")
-        co_return false;
+        co_return std::nullopt;
 
     auto it = routes_.find(req->path());
     if (it == routes_.end())
-        co_return false;
+        co_return std::nullopt;
 
     auto & key = req->getHeader(HttpHeader::NameCode::SecWebSocketKey);
     if (key.empty())
-        co_return false;
+        co_return std::nullopt;
 
     std::string accept = computeAccept(key);
 
@@ -57,11 +55,12 @@ Task<bool> WsServer::handleUpgrade(http::IncomingRequestPtr req,
     resp->setHeader(HttpHeader::NameCode::Upgrade, "websocket");
     resp->setHeader(HttpHeader::NameCode::Connection, "Upgrade");
     resp->setHeader(HttpHeader::NameCode::SecWebSocketAccept, accept);
-    co_await resp->flush();
 
-    WsConnection conn(std::move(stream));
-    co_await it->second(conn);
-    co_return true;
+    auto handler = it->second;
+    co_return [handler](io::StreamPtr stream) -> Task<> {
+        WsConnection conn(std::move(stream));
+        co_await handler(conn);
+    };
 }
 
 } // namespace nitrocoro::websocket

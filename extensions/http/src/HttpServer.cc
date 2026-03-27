@@ -202,9 +202,13 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
 
         if (requestUpgrader_ && isUpgradeRequest(*request))
         {
-            bool taken = co_await requestUpgrader_(request, response, stream);
-            if (taken)
+            auto handler = co_await requestUpgrader_(request, response);
+            if (handler)
+            {
+                co_await response->flush();
+                co_await (*handler)(stream);
                 co_return;
+            }
         }
 
         if (method == methods::_Invalid)

@@ -25,9 +25,8 @@ public:
     void attachTo(http::HttpServer & server);
 
 private:
-    Task<bool> handleUpgrade(http::IncomingRequestPtr req,
-                             http::ServerResponsePtr resp,
-                             io::StreamPtr stream);
+    Task<std::optional<http::HttpServer::StreamHandler>> handleUpgrade(http::IncomingRequestPtr req,
+                                                                        http::ServerResponsePtr resp);
 
     std::map<std::string, Handler> routes_;
 };
