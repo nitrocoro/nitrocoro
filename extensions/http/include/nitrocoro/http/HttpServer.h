@@ -66,6 +66,7 @@ public:
 
 private:
     Task<> handleConnection(net::TcpConnectionPtr conn);
+    Task<> flushResponse(ServerResponse & resp, std::optional<SharedFuture<>> prev, Promise<> & done);
 
     HttpServerConfig config_;
     Scheduler * scheduler_;

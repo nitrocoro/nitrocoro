@@ -618,6 +618,32 @@ NITRO_TEST(http_route_regex)
     co_await server.stop();
 }
 
+/** Malformed request returns 400 and closes connection. */
+NITRO_TEST(http_bad_request)
+{
+    HttpServer server(0);
+    co_await start_server(server);
+
+    auto conn = co_await net::TcpConnection::connect(
+        net::InetAddress("127.0.0.1", server.listeningPort()));
+
+    std::string req = "BADREQUEST\r\n";
+    co_await conn->write(req.data(), req.size());
+
+    char buf[4096];
+    std::string received;
+    while (true)
+    {
+        size_t n = co_await conn->read(buf, sizeof(buf));
+        if (n == 0)
+            break;
+        received.append(buf, n);
+    }
+    NITRO_CHECK(received.find("400") != std::string::npos);
+
+    co_await server.stop();
+}
+
 int main(int argc, char ** argv)
 {
     return nitrocoro::test::run_all(argc, argv);

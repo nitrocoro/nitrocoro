@@ -59,7 +59,6 @@ public:
     void setBody(std::string body);
     void setBody(const char * data, size_t len);
     void setBody(BodyWriterFn bodyWriterFn);
-    bool sendStarted() const { return startSending_; }
 
 protected:
     Task<> flush();

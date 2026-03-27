@@ -146,6 +146,22 @@ Task<> HttpServer::stop()
     }
 }
 
+Task<> HttpServer::flushResponse(ServerResponse & resp, std::optional<SharedFuture<>> prev, Promise<> & done)
+{
+    try
+    {
+        if (prev)
+            co_await *prev;
+        co_await resp.flush();
+    }
+    catch (...)
+    {
+        done.set_exception(std::current_exception());
+        throw;
+    }
+    done.set_value();
+}
+
 Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
 {
     io::StreamPtr stream;
@@ -167,9 +183,14 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         stream = std::make_shared<io::Stream>(conn);
     }
 
+    std::optional<SharedFuture<>> prevFuture;
     auto buffer = std::make_shared<utils::StringBuffer>();
     while (true)
     {
+        Promise<> done(scheduler_);
+        auto myPrev = prevFuture;
+        prevFuture = done.get_future().share();
+
         auto parsed = co_await parseNext(stream, buffer);
         if (std::holds_alternative<std::monostate>(parsed))
             co_return;
@@ -180,7 +201,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             errResp.setStatus(StatusCode::k400BadRequest);
             errResp.setCloseConnection(true);
             errResp.setBody("Bad Request");
-            co_await errResp.flush();
+            co_await flushResponse(errResp, myPrev, done);
             co_await stream->shutdown();
             co_return;
         }
@@ -194,8 +215,6 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         auto request = std::make_shared<IncomingRequest>(std::move(parsedMsg), bodyReader);
 
         auto method = request->method();
-        Promise<> finishedPromise(scheduler_);
-        auto finishedFuture = finishedPromise.get_future();
         bool ignoreBody = (method == methods::Head);
         auto response = std::make_shared<ServerResponse>(stream, ignoreBody, config_.send_date_header);
         response->setCloseConnection(!keepAlive);
@@ -205,7 +224,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             auto handler = co_await requestUpgrader_(request, response);
             if (handler)
             {
-                co_await response->flush();
+                co_await flushResponse(*response, myPrev, done);
                 co_await (*handler)(stream);
                 co_return;
             }
@@ -215,7 +234,7 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         {
             response->setStatus(StatusCode::k400BadRequest);
             response->setBody("Bad Request");
-            co_await response->flush();
+            co_await flushResponse(*response, myPrev, done);
             if (!bodyReader->isComplete())
                 co_await bodyReader->drain();
             if (!keepAlive)
@@ -237,92 +256,89 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
                 {
                     response->setStatus(StatusCode::k200OK);
                     response->setHeader(HttpHeader::NameCode::Allow, routeRes.allowedMethods);
-                    co_await response->flush();
                 }
                 else
                 {
                     response->setStatus(StatusCode::k405MethodNotAllowed);
                     response->setHeader(HttpHeader::NameCode::Allow, routeRes.allowedMethods);
                     response->setBody("Method Not Allowed");
-                    co_await response->flush();
                 }
             }
             else
             {
                 response->setStatus(StatusCode::k404NotFound);
                 response->setBody("Not Found");
-                co_await response->flush();
             }
+
+            co_await flushResponse(*response, myPrev, done);
+            if (!bodyReader->isComplete())
+                co_await bodyReader->drain();
+            if (!keepAlive)
+            {
+                co_await stream->shutdown();
+                co_return;
+            }
+            continue;
         }
-        else
+
+        // TODO: refine if logics
+        auto expect = request->getHeader(HttpHeader::NameCode::Expect);
+        if (!expect.empty())
         {
-            // TODO: refine if logics
-            auto expect = request->getHeader(HttpHeader::NameCode::Expect);
-            if (!expect.empty())
+            if (expect != "100-continue")
             {
-                if (expect != "100-continue")
+                response->setStatus(StatusCode::k417ExpectationFailed);
+                response->setBody("Expectation Failed");
+                co_await flushResponse(*response, myPrev, done);
+                if (!bodyReader->isComplete())
+                    co_await bodyReader->drain();
+                if (!keepAlive)
                 {
-                    response->setStatus(StatusCode::k417ExpectationFailed);
-                    response->setBody("Expectation Failed");
-                    co_await response->flush();
-                    if (!bodyReader->isComplete())
-                        co_await bodyReader->drain();
-                    if (!keepAlive)
-                    {
-                        co_await stream->shutdown();
-                        co_return;
-                    }
-                    continue;
+                    co_await stream->shutdown();
+                    co_return;
                 }
-                co_await stream->write("HTTP/1.1 100 Continue\r\n\r\n", 25);
+                continue;
             }
-
-            std::exception_ptr exPtr;
-            try
-            {
-                auto & middlewares = middlewares_;
-                auto invokeChain = [&](auto & self, size_t index,
-                                       IncomingRequestPtr req, ServerResponsePtr resp) -> Task<> {
-                    if (index < middlewares.size())
-                    {
-                        co_await middlewares[index](req, resp, [&]() -> Task<> {
-                            co_await self(self, index + 1, req, resp);
-                        });
-                    }
-                    else
-                    {
-                        co_await routeRes.handler->invoke(req, resp);
-                    }
-                };
-                co_await invokeChain(invokeChain, 0, request, response);
-            }
-            catch (const std::exception & ex)
-            {
-                NITRO_ERROR("Unhandled exception in handler: %s", ex.what());
-                exPtr = std::current_exception();
-            }
-            catch (...)
-            {
-                NITRO_ERROR("Unhandled exception in handler");
-                exPtr = std::current_exception();
-            }
-            // TODO: custom exception handler
-            if (exPtr)
-            {
-                keepAlive = false;
-                if (!response->sendStarted())
-                {
-                    response->setStatus(StatusCode::k500InternalServerError);
-                    response->setBody("Internal Server Error");
-                    co_await response->flush();
-                }
-            }
-            else
-            {
-                co_await response->flush();
-            }
+            co_await stream->write("HTTP/1.1 100 Continue\r\n\r\n", 25);
         }
 
+        std::exception_ptr exPtr;
+        try
+        {
+            auto & middlewares = middlewares_;
+            auto invokeChain = [&](auto & self, size_t index,
+                                   IncomingRequestPtr req, ServerResponsePtr resp) -> Task<> {
+                if (index < middlewares.size())
+                {
+                    co_await middlewares[index](req, resp, [&]() -> Task<> {
+                        co_await self(self, index + 1, req, resp);
+                    });
+                }
+                else
+                {
+                    co_await routeRes.handler->invoke(req, resp);
+                }
+            };
+            co_await invokeChain(invokeChain, 0, request, response);
+        }
+        catch (const std::exception & ex)
+        {
+            NITRO_ERROR("Unhandled exception in handler: %s", ex.what());
+            exPtr = std::current_exception();
+        }
+        catch (...)
+        {
+            NITRO_ERROR("Unhandled exception in handler");
+            exPtr = std::current_exception();
+        }
+        // TODO: custom exception handler
+        if (exPtr)
+        {
+            keepAlive = false;
+            response->setStatus(StatusCode::k500InternalServerError);
+            response->setBody("Internal Server Error");
+        }
+        co_await flushResponse(*response, myPrev, done);
         if (!bodyReader->isComplete())
             co_await bodyReader->drain();
         if (!keepAlive)
