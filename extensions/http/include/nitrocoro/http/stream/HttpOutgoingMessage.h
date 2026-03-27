@@ -8,8 +8,9 @@
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpTypes.h>
 
+#include <nitrocoro/http/BodyWriter.h>
+
 #include <nitrocoro/core/Future.h>
-#include <nitrocoro/core/Generator.h>
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/Stream.h>
 
@@ -28,7 +29,22 @@ template <typename DataType>
 class HttpOutgoingMessageBase
 {
 public:
-    using BodyGenerator = std::function<AsyncGenerator<std::string>()>;
+    class BodyStream
+    {
+    public:
+        explicit BodyStream(BodyWriter * writer)
+            : writer_(writer) {}
+
+        BodyStream(const BodyStream &) = delete;
+        BodyStream(BodyStream &&) = delete;
+
+        Task<> write(std::string_view data) { return writer_->write(data); }
+
+    private:
+        BodyWriter * writer_;
+    };
+
+    using BodyWriterFn = std::function<Task<>(BodyStream &)>;
 
     explicit HttpOutgoingMessageBase(io::StreamPtr stream,
                                      Promise<> finishedPromise,
@@ -49,7 +65,7 @@ public:
 
     void setBody(std::string body);
     void setBody(const char * data, size_t len);
-    void setBody(BodyGenerator bodyGenerator);
+    void setBody(BodyWriterFn bodyWriterFn);
     Task<> flush();
     bool sendStarted() const { return startSending_; }
 
@@ -59,7 +75,7 @@ protected:
 
     DataType data_;
     std::string body_;
-    BodyGenerator bodyGenerator_;
+    BodyWriterFn bodyWriterFn_;
 
     io::StreamPtr stream_;
     bool startSending_{ false };

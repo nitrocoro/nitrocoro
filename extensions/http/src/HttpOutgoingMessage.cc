@@ -58,20 +58,20 @@ template <typename DataType>
 void HttpOutgoingMessageBase<DataType>::setBody(std::string body)
 {
     body_ = std::move(body);
-    bodyGenerator_ = nullptr;
+    bodyWriterFn_ = nullptr;
 }
 
 template <typename DataType>
 void HttpOutgoingMessageBase<DataType>::setBody(const char * data, size_t len)
 {
     body_ = std::string(data, len);
-    bodyGenerator_ = nullptr;
+    bodyWriterFn_ = nullptr;
 }
 
 template <typename DataType>
-void HttpOutgoingMessageBase<DataType>::setBody(BodyGenerator bodyGenerator)
+void HttpOutgoingMessageBase<DataType>::setBody(BodyWriterFn bodyWriterFn)
 {
-    bodyGenerator_ = std::move(bodyGenerator);
+    bodyWriterFn_ = std::move(bodyWriterFn);
 }
 
 template <typename DataType>
@@ -82,7 +82,7 @@ Task<> HttpOutgoingMessageBase<DataType>::flush()
     startSending_ = true;
 
     std::unique_ptr<BodyWriter> bodyWriter;
-    if (bodyGenerator_)
+    if (bodyWriterFn_)
     {
         if (data_.version == Version::kHttp10)
         {
@@ -116,7 +116,7 @@ Task<> HttpOutgoingMessageBase<DataType>::flush()
     if (prevFuture_)
         co_await prevFuture_->get();
 
-    if (!bodyGenerator_)
+    if (!bodyWriterFn_)
     {
         // TODO: writev
         buf.append(body_);
@@ -127,11 +127,8 @@ Task<> HttpOutgoingMessageBase<DataType>::flush()
         // send headers
         co_await stream_->write(buf.data(), buf.size());
         // send body
-        auto gen = bodyGenerator_();
-        while (auto chunk = co_await gen.next())
-        {
-            co_await bodyWriter->write(*chunk);
-        }
+        BodyStream bodyStream(bodyWriter.get());
+        co_await bodyWriterFn_(bodyStream);
         co_await bodyWriter->end();
     }
     finishedPromise_.set_value();

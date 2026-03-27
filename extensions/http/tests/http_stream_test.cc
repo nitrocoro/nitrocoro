@@ -22,11 +22,11 @@ NITRO_TEST(server_streaming_response)
 
     server.route("/stream", { "GET" }, [](auto req, auto resp) {
         std::vector<std::string> chunks = { "hello", " ", "world" };
-        resp->setBody([chunks = std::move(chunks)]() mutable -> AsyncGenerator<std::string> {
+        resp->setBody([chunks = std::move(chunks)](auto & writer) -> Task<> {
             for (auto && chunk : chunks)
             {
                 co_await sleep(std::chrono::milliseconds(10));
-                co_yield std::move(chunk);
+                co_await writer.write(chunk);
             }
         });
     });
@@ -58,10 +58,10 @@ NITRO_TEST(client_streaming_request)
     auto [req, respFuture] = co_await client.stream(
         methods::Post, "http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/echo");
 
-    req.setBody([chunks = std::move(chunks)]() mutable -> AsyncGenerator<std::string> {
+    req.setBody([chunks = std::move(chunks)](auto & writer) -> Task<> {
         for (auto && chunk : chunks)
         {
-            co_yield std::move(chunk);
+            co_await writer.write(chunk);
         }
     });
     co_await req.flush();
