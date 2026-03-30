@@ -160,11 +160,11 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     if (std::holds_alternative<HttpParseError>(parsed))
     {
         NITRO_DEBUG("Bad request: %s", std::get<HttpParseError>(parsed).message.c_str());
-        auto resp = std::make_shared<ServerResponse>(stream, false, config_.send_date_header);
-        resp->setStatus(StatusCode::k400BadRequest);
-        resp->setCloseConnection(true);
-        resp->setBody("Bad Request");
-        co_return { Action::Close, resp };
+        auto response = std::make_shared<ServerResponse>(stream, false, config_.send_date_header);
+        response->setStatus(StatusCode::k400BadRequest);
+        response->setCloseConnection(true);
+        response->setBody("Bad Request");
+        co_return { Action::Close, std::move(response) };
     }
 
     auto & parsedMsg = std::get<HttpRequest>(parsed);
@@ -184,7 +184,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     {
         response->setStatus(StatusCode::k400BadRequest);
         response->setBody("Bad Request");
-        co_return { keepAlive ? Action::Continue : Action::Shutdown, response, bodyReader };
+        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
     }
 
     if (requestUpgrader_ && isUpgradeRequest(*request))
@@ -192,7 +192,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         auto handler = co_await requestUpgrader_(request, response);
         if (handler)
         {
-            co_return { Action::Upgrade, response, bodyReader, std::move(*handler) };
+            co_return { Action::Upgrade, std::move(response), std::move(bodyReader), std::move(*handler) };
         }
     }
 
@@ -221,7 +221,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
             response->setBody("Not Found");
         }
 
-        co_return { keepAlive ? Action::Continue : Action::Shutdown, response, bodyReader };
+        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
     }
 
     auto expect = request->getHeader(HttpHeader::NameCode::Expect);
@@ -231,7 +231,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         {
             response->setStatus(StatusCode::k417ExpectationFailed);
             response->setBody("Expectation Failed");
-            co_return { keepAlive ? Action::Continue : Action::Shutdown, response, bodyReader };
+            co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
         }
         // TODO: custom handler
         co_await stream->write("HTTP/1.1 100 Continue\r\n\r\n", 25);
@@ -273,7 +273,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         response->setStatus(StatusCode::k500InternalServerError);
         response->setBody("Internal Server Error");
     }
-    co_return { keepAlive ? Action::Continue : Action::Shutdown, response, bodyReader };
+    co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
 }
 
 Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
@@ -299,31 +299,15 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
         stream = std::make_shared<io::Stream>(conn);
     }
 
-    std::optional<SharedFuture<>> prevFuture;
     auto buffer = std::make_shared<utils::StringBuffer>();
     while (true)
     {
-        Promise<> done;
-        auto prev = prevFuture;
-        prevFuture = done.get_future().share();
-
         auto result = co_await handleNextRequest(stream, buffer);
         if (result.action == Action::Disconnected)
             break;
 
-        // flush response
-        try
-        {
-            if (prev)
-                co_await *prev;
-            co_await result.resp->flush();
-        }
-        catch (...)
-        {
-            done.set_exception(std::current_exception());
-            throw;
-        }
-        done.set_value();
+        // flush resp
+        co_await result.resp->flush();
 
         if (result.action == Action::Upgrade)
         {

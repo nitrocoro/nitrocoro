@@ -110,7 +110,7 @@ Task<> HttpOutgoingMessageBase<DataType>::flush()
     }
 
     std::string buf;
-    buf.reserve(32 + data_.headers.size() * 32 + body_.size());
+    buf.reserve(128 + data_.headers.size() * 64 + body_.size());
     buildHeaders(buf);
     buf.append("\r\n");
 
