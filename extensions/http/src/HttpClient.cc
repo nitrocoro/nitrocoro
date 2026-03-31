@@ -4,9 +4,7 @@
  */
 #include <nitrocoro/http/HttpClient.h>
 
-#include <nitrocoro/core/Future.h>
-#include <nitrocoro/core/Scheduler.h>
-#include <nitrocoro/http/HttpMessage.h>
+#include <nitrocoro/http/stream/HttpOutgoingMessage.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/Dns.h>
 #include <nitrocoro/net/Url.h>
@@ -54,23 +52,58 @@ void HttpClient::setStreamUpgrader(StreamUpgrader upgrader)
 
 Task<HttpCompleteResponse> HttpClient::get(const std::string & url)
 {
-    co_return co_await request(methods::Get, url);
+    ClientRequest req;
+    req.setUrl(url);
+    req.setMethod(methods::Get);
+    auto resp = co_await send(std::move(req));
+    co_return co_await resp.toCompleteResponse();
 }
 
 Task<HttpCompleteResponse> HttpClient::post(const std::string & url, const std::string & body)
 {
-    co_return co_await request(methods::Post, url, body);
+    ClientRequest req;
+    req.setUrl(url);
+    req.setMethod(methods::Post);
+    req.setBody(body);
+    auto resp = co_await send(std::move(req));
+    co_return co_await resp.toCompleteResponse();
 }
 
 Task<HttpCompleteResponse> HttpClient::request(const HttpMethod & method, const std::string & url, const std::string & body)
 {
-    net::Url parsedUrl(url);
-    if (!parsedUrl.isValid())
-        throw std::invalid_argument("Invalid URL");
-    co_return co_await sendRequest(method, parsedUrl, body);
+    ClientRequest req;
+    req.setUrl(url);
+    req.setMethod(method);
+    if (!body.empty())
+        req.setBody(body);
+    auto resp = co_await send(std::move(req));
+    co_return co_await resp.toCompleteResponse();
 }
 
-Task<HttpCompleteResponse> HttpClient::sendRequest(const HttpMethod & method, const net::Url & url, const std::string & body)
+Task<IncomingResponse> HttpClient::send(ClientRequest req)
+{
+    net::Url parsedUrl(req.url_);
+    if (!parsedUrl.isValid())
+        throw std::invalid_argument("Invalid URL");
+
+    auto stream = co_await connect(parsedUrl);
+
+    // Inject stream and fill in defaults
+    req.setStream(stream);
+    std::string requestTarget = parsedUrl.path();
+    if (!parsedUrl.query().empty())
+        requestTarget.append("?").append(parsedUrl.query());
+    req.setPath(requestTarget);
+    if (!req.data_.headers.contains(HttpHeader::Name::Host_L))
+        req.setHeader(HttpHeader::NameCode::Host, parsedUrl.host());
+    if (!req.data_.headers.contains(HttpHeader::Name::Connection_L))
+        req.setHeader(HttpHeader::NameCode::Connection, "close");
+    co_await req.flush();
+
+    co_return co_await readResponse(stream, req.data_.method == methods::Head);
+}
+
+Task<io::StreamPtr> HttpClient::connect(const net::Url & url)
 {
     // Resolve hostname
     auto addresses = co_await net::resolve(url.host());
@@ -81,46 +114,17 @@ Task<HttpCompleteResponse> HttpClient::sendRequest(const HttpMethod & method, co
     auto addr = addresses[0];
     auto conn = co_await net::TcpConnection::connect(net::InetAddress(addr.toIp(), url.port(), addr.isIpV6()));
 
-    // Upgrade stream if upgrader is set
-    io::StreamPtr stream;
     if (upgrader_)
     {
-        stream = co_await upgrader_(conn);
+        auto stream = co_await upgrader_(conn);
         if (!stream)
             throw std::runtime_error("Stream upgrade failed");
+        co_return stream;
     }
-    else
-    {
-        stream = std::make_shared<io::Stream>(conn);
-    }
-
-    // Build request
-    std::string request;
-    request.reserve(method.toString().size() + url.path().size() + url.host().size() + body.size() + 64);
-    std::string requestTarget = url.path();
-    if (!url.query().empty())
-        requestTarget.append("?").append(url.query());
-    request.append(method.toString()).append(" ").append(requestTarget).append(" HTTP/1.1\r\n");
-    request.append("Host: ").append(url.host()).append("\r\n");
-    request.append("Connection: close\r\n");
-
-    if (!body.empty())
-    {
-        request.append("Content-Length: ").append(std::to_string(body.size())).append("\r\n");
-    }
-
-    request.append("\r\n");
-
-    if (!body.empty())
-    {
-        request.append(body);
-    }
-    co_await stream->write(request.c_str(), request.size());
-
-    co_return co_await readResponse(stream, method == methods::Head);
+    co_return std::make_shared<io::Stream>(conn);
 }
 
-Task<HttpCompleteResponse> HttpClient::readResponse(io::StreamPtr stream, bool ignoreContentLength)
+Task<IncomingResponse> HttpClient::readResponse(io::StreamPtr stream, bool ignoreContentLength)
 {
     auto buffer = std::make_shared<utils::StringBuffer>();
     auto result = co_await parseNext(stream, buffer);
@@ -133,78 +137,7 @@ Task<HttpCompleteResponse> HttpClient::readResponse(io::StreamPtr stream, bool i
     auto transferMode = msg.transferMode;
     auto contentLength = msg.contentLength;
     auto bodyReader = BodyReader::create(stream, buffer, transferMode, ignoreContentLength ? 0 : contentLength);
-    auto incomingStream = HttpIncomingStream<HttpResponse>(std::move(msg), std::move(bodyReader));
-    co_return co_await incomingStream.toCompleteResponse();
-}
-
-Task<HttpClientSession> HttpClient::stream(const HttpMethod & method, const std::string & url)
-{
-    net::Url parsedUrl(url);
-    if (!parsedUrl.isValid())
-        throw std::invalid_argument("Invalid URL");
-
-    // Resolve and connect
-    auto addresses = co_await net::resolve(parsedUrl.host());
-    if (addresses.empty())
-        throw std::runtime_error("DNS resolution failed");
-
-    auto conn = co_await net::TcpConnection::connect(net::InetAddress(addresses[0].toIp(), parsedUrl.port(), addresses[0].isIpV6()));
-
-    // Upgrade stream if upgrader is set
-    io::StreamPtr anyStream;
-    if (upgrader_)
-    {
-        anyStream = co_await upgrader_(conn);
-        if (!anyStream)
-            throw std::runtime_error("Stream upgrade failed");
-    }
-    else
-    {
-        anyStream = std::make_shared<io::Stream>(conn);
-    }
-
-    // Create outgoing stream for request body
-    HttpOutgoingMessage<HttpRequest> requestStream(anyStream);
-    requestStream.setMethod(method);
-    requestStream.setPath(parsedUrl.path());
-    requestStream.setHeader(HttpHeader::NameCode::Host, parsedUrl.host());
-
-    // Create promise/future for response
-    Promise<HttpIncomingStream<HttpResponse>> promise(Scheduler::current());
-    auto responseFuture = promise.get_future();
-
-    // Spawn background task to receive response
-    Scheduler::current()->spawn([anyStream, promise = std::move(promise)]() mutable -> Task<> {
-        try
-        {
-            auto buffer = std::make_shared<utils::StringBuffer>();
-            auto result = co_await parseNext(anyStream, buffer);
-            if (std::holds_alternative<std::monostate>(result))
-            {
-                promise.set_exception(std::make_exception_ptr(std::runtime_error("Connection closed")));
-                co_return;
-            }
-            if (std::holds_alternative<HttpParseError>(result))
-            {
-                promise.set_exception(std::make_exception_ptr(std::runtime_error(std::get<HttpParseError>(result).message)));
-                co_return;
-            }
-
-            auto & msg = std::get<HttpResponse>(result);
-            auto transferMode = msg.transferMode;
-            auto contentLength = msg.contentLength;
-            auto response = HttpIncomingStream<HttpResponse>(
-                std::move(msg),
-                BodyReader::create(anyStream, buffer, transferMode, contentLength));
-            promise.set_value(std::move(response));
-        }
-        catch (...)
-        {
-            promise.set_exception(std::current_exception());
-        }
-    });
-
-    co_return HttpClientSession{ std::move(requestStream), std::move(responseFuture) };
+    co_return IncomingResponse(std::move(msg), std::move(bodyReader));
 }
 
 } // namespace nitrocoro::http

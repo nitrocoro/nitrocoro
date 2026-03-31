@@ -309,12 +309,11 @@ NITRO_TEST(cookie_integration_client_send)
     co_await sleep(10ms);
 
     HttpClient client;
-    auto [req, respFuture] = co_await client.stream(methods::Get,
-                                                    "http://127.0.0.1:" + std::to_string(port) + "/echo");
+    ClientRequest req;
+    req.setUrl("http://127.0.0.1:" + std::to_string(port) + "/echo");
+    req.setMethod(methods::Get);
     req.setCookie("token", "secret");
-    co_await req.flush();
-
-    auto resp = co_await respFuture.get();
+    auto resp = co_await client.send(std::move(req));
     auto complete = co_await resp.toCompleteResponse();
     NITRO_CHECK_EQ(complete.statusCode(), 200);
     NITRO_CHECK_EQ(complete.body(), "secret");

@@ -43,6 +43,8 @@ public:
 
     using BodyWriterFn = std::function<Task<>(BodyStream &)>;
 
+    HttpOutgoingMessageBase() = default;
+
     explicit HttpOutgoingMessageBase(io::StreamPtr stream,
                                      bool ignoreBody = false,
                                      bool send_date_header = true)
@@ -92,18 +94,25 @@ class HttpOutgoingMessage<HttpRequest>
     : public detail::HttpOutgoingMessageBase<HttpRequest>
 {
 public:
+    HttpOutgoingMessage() = default;
+
     explicit HttpOutgoingMessage(io::StreamPtr stream)
         : detail::HttpOutgoingMessageBase<HttpRequest>(std::move(stream))
     {
     }
 
-    Task<> flush() { return detail::HttpOutgoingMessageBase<HttpRequest>::flush(); }
-
+    void setUrl(std::string url) { url_ = std::move(url); }
     void setMethod(HttpMethod method) { data_.method = method; }
     void setMethod(std::string_view method) { data_.method = HttpMethod::fromString(method); }
     void setPath(const std::string & path) { data_.path = path; }
     void setVersion(Version version) { data_.version = version; }
     void setCookie(const std::string & name, std::string value) { data_.cookies[name] = std::move(value); }
+
+private:
+    friend class HttpClient;
+    void setStream(io::StreamPtr stream) { stream_ = std::move(stream); }
+
+    std::string url_;
 };
 
 // ============================================================================

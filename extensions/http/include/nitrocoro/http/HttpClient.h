@@ -8,7 +8,6 @@
 #include <nitrocoro/http/HttpStream.h>
 #include <nitrocoro/http/HttpTypes.h>
 
-#include <nitrocoro/core/Future.h>
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/TcpConnection.h>
@@ -18,12 +17,6 @@
 
 namespace nitrocoro::http
 {
-
-struct HttpClientSession
-{
-    HttpOutgoingMessage<HttpRequest> request;
-    Future<HttpIncomingStream<HttpResponse>> response;
-};
 
 class HttpClient
 {
@@ -39,12 +32,12 @@ public:
     Task<HttpCompleteResponse> post(const std::string & url, const std::string & body);
     Task<HttpCompleteResponse> request(const HttpMethod & method, const std::string & url, const std::string & body = "");
 
-    // Stream API
-    Task<HttpClientSession> stream(const HttpMethod & method, const std::string & url);
+    // Full control API
+    Task<IncomingResponse> send(ClientRequest req);
 
 private:
-    Task<HttpCompleteResponse> sendRequest(const HttpMethod & method, const net::Url & url, const std::string & body);
-    Task<HttpCompleteResponse> readResponse(io::StreamPtr stream, bool ignoreContentLength = false);
+    Task<io::StreamPtr> connect(const net::Url & url);
+    Task<IncomingResponse> readResponse(io::StreamPtr stream, bool ignoreContentLength = false);
 
     StreamUpgrader upgrader_;
 };
