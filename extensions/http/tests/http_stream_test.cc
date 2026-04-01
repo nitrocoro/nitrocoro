@@ -107,6 +107,32 @@ NITRO_TEST(server_streaming_response_writer_throws)
     co_await server.stop();
 }
 
+/** toCompleteRequest carries correct body, method, path; toCompleteResponse carries correct body and status. */
+NITRO_TEST(complete_message_body_and_metadata)
+{
+    HttpServer server(0);
+    server.route("/echo", { "POST" }, [&](auto req, auto resp) -> Task<> {
+        auto complete = co_await req->toCompleteRequest();
+        NITRO_CHECK_EQ(complete.method(), methods::Post);
+        NITRO_CHECK_EQ(complete.path(), "/echo");
+        NITRO_CHECK_EQ(complete.body(), "hello");
+        resp->setBody(complete.body());
+    });
+    co_await start_server(server);
+
+    HttpClient client;
+    ClientRequest req;
+    req.setUrl("http://127.0.0.1:" + std::to_string(server.listeningPort()) + "/echo");
+    req.setMethod(methods::Post);
+    req.setBody("hello");
+    auto resp = co_await client.send(std::move(req));
+    auto complete = co_await resp.toCompleteResponse();
+    NITRO_CHECK_EQ(complete.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(complete.body(), "hello");
+
+    co_await server.stop();
+}
+
 int main(int argc, char ** argv)
 {
     return nitrocoro::test::run_all(argc, argv);

@@ -28,6 +28,13 @@ NITRO_TEST(http_parser_request_basic)
     NITRO_CHECK_EQ(std::get<HttpRequest>(result).method, methods::Get);
     NITRO_CHECK_EQ(std::get<HttpRequest>(result).path, "/hello");
     NITRO_CHECK_EQ(std::get<HttpRequest>(result).version, Version::kHttp11);
+    HttpRequestAccessor accessor(std::get<HttpRequest>(std::move(result)));
+    NITRO_CHECK_EQ(accessor.method(), methods::Get);
+    NITRO_CHECK_EQ(accessor.path(), "/hello");
+    NITRO_CHECK_EQ(accessor.version(), Version::kHttp11);
+    NITRO_CHECK_EQ(accessor.getHeader("host"), "example.com");
+    NITRO_CHECK_EQ(accessor.getHeader(HttpHeader::NameCode::Host), "example.com");
+    NITRO_CHECK(accessor.getHeader("missing").empty());
     co_return;
 }
 
@@ -74,6 +81,7 @@ NITRO_TEST(http_parser_request_query_accessor)
         auto message = std::get<HttpRequest>(parser.extractResult());
         HttpRequestAccessor accessor(message);
         NITRO_CHECK_EQ(accessor.getQuery("tag"), "a");
+        NITRO_CHECK_EQ(accessor.queries().size(), 1);
     }
     // no query string
     {
@@ -252,6 +260,13 @@ NITRO_TEST(http_parser_response_basic)
     NITRO_CHECK_EQ(std::get<HttpResponse>(result).version, Version::kHttp11);
     NITRO_CHECK_EQ(std::get<HttpResponse>(result).statusCode, StatusCode::k200OK);
     NITRO_CHECK_EQ(std::get<HttpResponse>(result).statusReason, "OK");
+    HttpResponseAccessor accessor(std::get<HttpResponse>(std::move(result)));
+    NITRO_CHECK_EQ(accessor.version(), Version::kHttp11);
+    NITRO_CHECK_EQ(accessor.statusCode(), StatusCode::k200OK);
+    NITRO_CHECK_EQ(accessor.statusReason(), "OK");
+    NITRO_CHECK_EQ(accessor.getHeader("content-type"), "text/plain");
+    NITRO_CHECK_EQ(accessor.getHeader(HttpHeader::NameCode::ContentType), "text/plain");
+    NITRO_CHECK(accessor.getHeader("missing").empty());
     co_return;
 }
 
@@ -516,6 +531,11 @@ NITRO_TEST(http_parser_request_cookie)
     NITRO_CHECK(!std::holds_alternative<HttpParseError>(result));
     NITRO_CHECK_EQ(std::get<HttpRequest>(result).cookies.at("session"), "abc123");
     NITRO_CHECK_EQ(std::get<HttpRequest>(result).cookies.at("user"), "john");
+    HttpRequestAccessor accessor(std::get<HttpRequest>(std::move(result)));
+    NITRO_CHECK_EQ(accessor.getCookie("session"), "abc123");
+    NITRO_CHECK_EQ(accessor.getCookie("user"), "john");
+    NITRO_CHECK(accessor.getCookie("missing").empty());
+    NITRO_CHECK_EQ(accessor.cookies().size(), 2);
     co_return;
 }
 
@@ -532,6 +552,9 @@ NITRO_TEST(http_parser_response_set_cookie)
     NITRO_CHECK_EQ(std::get<HttpResponse>(result).cookies.size(), 1);
     NITRO_CHECK_EQ(std::get<HttpResponse>(result).cookies[0].name, "session");
     NITRO_CHECK_EQ(std::get<HttpResponse>(result).cookies[0].value, "abc123");
+    HttpResponseAccessor accessor(std::get<HttpResponse>(std::move(result)));
+    NITRO_CHECK_EQ(accessor.cookies().size(), 1);
+    NITRO_CHECK_EQ(accessor.cookies()[0].name, "session");
     co_return;
 }
 
