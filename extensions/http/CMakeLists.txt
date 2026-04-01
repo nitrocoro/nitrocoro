@@ -82,4 +82,8 @@ if (BUILD_TESTING)
     add_executable(middleware_test tests/middleware_test.cc)
     target_link_libraries(middleware_test PRIVATE nitrocoro-http)
     add_test(NAME middleware_test COMMAND middleware_test)
+
+    add_executable(http_outgoing_message_test tests/http_outgoing_message_test.cc)
+    target_link_libraries(http_outgoing_message_test PRIVATE nitrocoro-http)
+    add_test(NAME http_outgoing_message_test COMMAND http_outgoing_message_test)
 endif ()
