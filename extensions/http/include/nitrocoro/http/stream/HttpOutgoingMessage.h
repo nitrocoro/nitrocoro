@@ -59,20 +59,18 @@ public:
     void setBody(const char * data, size_t len);
     void setBody(BodyWriterFn bodyWriterFn);
 
-    Task<> flush(io::StreamPtr stream);
+    Task<> flush(io::StreamPtr stream) const;
 
 protected:
     static const char * getDefaultReason(uint16_t code);
-    void buildHeaders(std::string & buf);
+    void buildHeaders(std::string & buf, TransferMode mode, size_t bodyLength, bool overrideCloseConnection) const;
 
     DataType data_;
     std::string body_;
     BodyWriterFn bodyWriterFn_;
 
-    TransferMode transferMode_{ TransferMode::Chunked };
     bool ignoreBody_{ false };
     bool sendDateHeader_{ true };
-    size_t bodyLength_{ 0 };
 };
 
 } // namespace detail

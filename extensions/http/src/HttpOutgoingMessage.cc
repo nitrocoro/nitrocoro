@@ -76,38 +76,36 @@ void HttpOutgoingMessageBase<DataType>::setBody(BodyWriterFn bodyWriterFn)
 }
 
 template <typename DataType>
-Task<> HttpOutgoingMessageBase<DataType>::flush(io::StreamPtr stream)
+Task<> HttpOutgoingMessageBase<DataType>::flush(io::StreamPtr stream) const
 {
     std::unique_ptr<BodyWriter> bodyWriter;
+    bool overrideCloseConnection{ false };
+    TransferMode mode{ TransferMode::ContentLength };
+
     if (bodyWriterFn_)
     {
         if (data_.version == Version::kHttp10)
         {
             // HTTP/1.0 does not support chunked; fall back to close-delimited
-            transferMode_ = TransferMode::UntilClose;
+            mode = TransferMode::UntilClose;
             bodyWriter = BodyWriter::create(TransferMode::UntilClose, stream);
             if constexpr (std::is_same_v<DataType, HttpResponse>)
-                data_.shouldClose = true;
+                overrideCloseConnection = true;
         }
         else
         {
-            transferMode_ = TransferMode::Chunked;
-            auto it = data_.headers.find(HttpHeader::Name::ContentLength_L);
-            if (it != data_.headers.end())
-                data_.headers.erase(it);
-            setHeader(HttpHeader::NameCode::TransferEncoding, "chunked");
+            mode = TransferMode::Chunked;
             bodyWriter = BodyWriter::create(TransferMode::Chunked, stream);
         }
     }
     else
     {
-        transferMode_ = TransferMode::ContentLength;
-        setHeader(HttpHeader::NameCode::ContentLength, std::to_string(body_.size()));
+        mode = TransferMode::ContentLength;
     }
 
     std::string buf;
     buf.reserve(128 + data_.headers.size() * 64 + body_.size());
-    buildHeaders(buf);
+    buildHeaders(buf, mode, body_.size(), overrideCloseConnection);
     buf.append("\r\n");
 
     if (!bodyWriterFn_)
@@ -129,8 +127,10 @@ Task<> HttpOutgoingMessageBase<DataType>::flush(io::StreamPtr stream)
 }
 
 template <typename DataType>
-void HttpOutgoingMessageBase<DataType>::buildHeaders(std::string & buf)
+void HttpOutgoingMessageBase<DataType>::buildHeaders(
+    std::string & buf, TransferMode mode, size_t bodyLength, bool overrideCloseConnection) const
 {
+    // fill request/response line
     if constexpr (std::is_same_v<DataType, HttpRequest>)
     {
         buf.append(data_.method.toString())
@@ -139,12 +139,51 @@ void HttpOutgoingMessageBase<DataType>::buildHeaders(std::string & buf)
             .append(" ")
             .append(toVersionString(data_.version))
             .append("\r\n");
+    }
+    else // HttpResponse
+    {
+        buf.append(toVersionString(data_.version))
+            .append(" ")
+            .append(std::to_string(data_.statusCode))
+            .append(" ")
+            .append(data_.statusReason.empty() ? getDefaultReason(data_.statusCode) : data_.statusReason)
+            .append("\r\n");
+    }
 
-        for (const auto & [name, header] : data_.headers)
+    // fill headers
+    for (const auto & [name, header] : data_.headers)
+    {
+        if (header.nameCode() == HttpHeader::NameCode::ContentLength)
         {
-            buf.append(header.name()).append(": ").append(header.value()).append("\r\n");
+            if (mode == TransferMode::ContentLength)
+            {
+                buf.append(header.name()).append(": ").append(std::to_string(bodyLength)).append("\r\n");
+            }
+            continue;
         }
+        else if (header.nameCode() == HttpHeader::NameCode::Connection)
+        {
+            if (overrideCloseConnection)
+            {
+                // Fill later. This only happens in Response handling.
+                continue;
+            }
+        }
+        buf.append(header.name()).append(": ").append(header.value()).append("\r\n");
+    }
+    if (mode == TransferMode::ContentLength && !data_.headers.contains(HttpHeader::Name::ContentLength_L))
+    {
+        buf.append(HttpHeader::Name::ContentLength_L).append(": ").append(std::to_string(bodyLength)).append("\r\n");
+    }
+    if (mode == TransferMode::Chunked && !data_.headers.contains(HttpHeader::Name::TransferEncoding_L))
+    {
+        static const HttpHeader chunkedHeader(HttpHeader::NameCode::TransferEncoding, "chunked");
+        buf.append(chunkedHeader.name()).append(": ").append(chunkedHeader.value()).append("\r\n");
+    }
 
+    // extra headers
+    if constexpr (std::is_same_v<DataType, HttpRequest>)
+    {
         if (!data_.cookies.empty())
         {
             buf.append("Cookie: ");
@@ -161,18 +200,6 @@ void HttpOutgoingMessageBase<DataType>::buildHeaders(std::string & buf)
     }
     else // HttpResponse
     {
-        buf.append(toVersionString(data_.version))
-            .append(" ")
-            .append(std::to_string(data_.statusCode))
-            .append(" ")
-            .append(data_.statusReason.empty() ? getDefaultReason(data_.statusCode) : data_.statusReason)
-            .append("\r\n");
-
-        for (const auto & [name, header] : data_.headers)
-        {
-            buf.append(header.name()).append(": ").append(header.value()).append("\r\n");
-        }
-
         for (const auto & cookie : data_.cookies)
         {
             buf.append("Set-Cookie: ").append(cookie.toString()).append("\r\n");
@@ -192,16 +219,13 @@ void HttpOutgoingMessageBase<DataType>::buildHeaders(std::string & buf)
             buf.append("Date: ").append(dateBuf).append("\r\n");
         }
 
-        if (data_.headers.find(HttpHeader::Name::Connection_L) == data_.headers.end())
+        if (overrideCloseConnection)
         {
-            if (data_.shouldClose)
-            {
-                buf.append("Connection: close\r\n");
-            }
-            else if (data_.version == Version::kHttp10)
-            {
-                buf.append("Connection: keep-alive\r\n");
-            }
+            buf.append("connection: close\r\n");
+        }
+        else if (data_.shouldClose && !data_.headers.contains(HttpHeader::Name::Connection_L))
+        {
+            buf.append("connection: close\r\n");
         }
     }
 }
