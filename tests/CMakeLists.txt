@@ -43,3 +43,5 @@ add_test(NAME url_test COMMAND url_test)
 add_executable(net_url_test net_url_test.cc)
 target_link_libraries(net_url_test PRIVATE nitrocoro)
 add_test(NAME net_url_test COMMAND net_url_test)
+
+add_subdirectory(stress)
