@@ -45,6 +45,7 @@ struct Connector
             }
             else
             {
+                savedErrno_ = error;
                 return Channel::IoStatus::Error;
             }
         }
@@ -70,15 +71,18 @@ struct Connector
                 return Channel::IoStatus::Retry;
 
             default:
+                savedErrno_ = lastErrno;
                 return Channel::IoStatus::Error;
         }
     }
 
+    int savedErrno() const { return savedErrno_; }
+
 private:
     const sockaddr * addr_;
     socklen_t addrLen_;
-
     bool connecting_{ false };
+    int savedErrno_{ 0 };
 };
 
 Task<TcpConnectionPtr> TcpConnection::connect(const InetAddress & addr)
@@ -93,7 +97,7 @@ Task<TcpConnectionPtr> TcpConnection::connect(const InetAddress & addr)
     Connector connector(addr.getSockAddr(), addrLen);
     auto result = co_await channelPtr->performWrite(&connector);
     if (result != Channel::IoResult::Success)
-        throw std::runtime_error("TCP connect failed");
+        throw std::runtime_error(std::string("TCP connect failed: ") + strerror(connector.savedErrno()));
     co_return std::make_shared<TcpConnection>(std::move(channelPtr), std::move(socket), InetAddress::getLocalAddr(fd), addr);
 }
 

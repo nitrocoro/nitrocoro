@@ -22,6 +22,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -35,15 +36,19 @@ using Clock = std::chrono::steady_clock;
 
 struct Config
 {
-    enum class Mode { Tcp, Http };
-    Mode        mode       = Mode::Tcp;
-    std::string host       = "127.0.0.1";
-    uint16_t    port       = 19001;   // base port
-    int         port_count = 10;
-    int         conns      = 10000;
-    int         ramp_rate  = 100;
-    int         duration   = 30;
-    int         threads    = 1;
+    enum class Mode
+    {
+        Tcp,
+        Http
+    };
+    Mode mode = Mode::Tcp;
+    std::string host = "127.0.0.1";
+    uint16_t port = 19001; // base port
+    int port_count = 10;
+    int conns = 10000;
+    int ramp_rate = 100;
+    int duration = 30;
+    int threads = 1;
 };
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -54,8 +59,21 @@ struct Stats
     std::atomic<int64_t> errors{ 0 };
     std::atomic<int64_t> requests{ 0 };
     std::atomic<int64_t> latency_us_sum{ 0 };
+    std::mutex last_error_mu;
+    std::string last_error;
 
-    void record(int64_t us) { ++requests; latency_us_sum += us; }
+    void record(int64_t us)
+    {
+        ++requests;
+        latency_us_sum += us;
+    }
+
+    void set_error(const char * msg)
+    {
+        ++errors;
+        std::lock_guard lock(last_error_mu);
+        last_error = msg;
+    }
 };
 
 static Stats g_stats;
@@ -70,9 +88,9 @@ Task<> tcp_worker(InetAddress addr)
     {
         conn = co_await TcpConnection::connect(addr);
     }
-    catch (...)
+    catch (const std::exception & e)
     {
-        ++g_stats.errors;
+        g_stats.set_error(e.what());
         co_return;
     }
 
@@ -92,9 +110,9 @@ Task<> tcp_worker(InetAddress addr)
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
             g_stats.record(us);
         }
-        catch (...)
+        catch (const std::exception & e)
         {
-            ++g_stats.errors;
+            g_stats.set_error(e.what());
             break;
         }
     }
@@ -115,13 +133,21 @@ Task<> http_worker(std::string base_url)
             auto t0 = Clock::now();
             co_await client.get("/ping");
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
-            if (!counted) { ++g_stats.connected; counted = true; }
+            if (!counted)
+            {
+                ++g_stats.connected;
+                counted = true;
+            }
             g_stats.record(us);
         }
-        catch (...)
+        catch (const std::exception & e)
         {
-            ++g_stats.errors;
-            if (counted) { --g_stats.connected; counted = false; }
+            g_stats.set_error(e.what());
+            if (counted)
+            {
+                --g_stats.connected;
+                counted = false;
+            }
             failed = true;
         }
         if (failed)
@@ -136,8 +162,8 @@ Task<> http_worker(std::string base_url)
 
 Task<> ramp_controller(Config cfg)
 {
-    auto * sched    = Scheduler::current();
-    auto   interval = std::chrono::microseconds(1'000'000 / cfg.ramp_rate);
+    auto * sched = Scheduler::current();
+    auto interval = std::chrono::microseconds(1'000'000 / cfg.ramp_rate);
 
     printf("[ramp] spawning %d conns across %d ports at %d/sec...\n",
            cfg.conns, cfg.port_count, cfg.ramp_rate);
@@ -172,26 +198,36 @@ Task<> ramp_controller(Config cfg)
 
 Task<> reporter(Config cfg)
 {
-    auto    t_start  = Clock::now();
+    auto t_start = Clock::now();
     int64_t prev_reqs = 0;
+    int64_t prev_lat_sum = 0;
 
     while (!g_done)
     {
         co_await sleep(std::chrono::seconds(1));
 
-        int64_t reqs  = g_stats.requests.load();
+        int64_t reqs = g_stats.requests.load();
+        int64_t lat_sum = g_stats.latency_us_sum.load();
         int64_t delta = reqs - prev_reqs;
-        prev_reqs     = reqs;
+        int64_t lat_delta = lat_sum - prev_lat_sum;
+        prev_reqs = reqs;
+        prev_lat_sum = lat_sum;
+        int64_t lat_avg_us = (delta > 0) ? lat_delta / delta : 0;
+        double elapsed = std::chrono::duration<double>(Clock::now() - t_start).count();
 
-        int64_t lat_avg_us = (reqs > 0) ? g_stats.latency_us_sum.load() / reqs : 0;
-        double  elapsed    = std::chrono::duration<double>(Clock::now() - t_start).count();
+        std::string last_err;
+        {
+            std::lock_guard lock(g_stats.last_error_mu);
+            last_err.swap(g_stats.last_error);
+        }
 
-        printf("[t=%4.0fs] conns=%5" PRId64 "/%d  qps=%7" PRId64 "  avg_lat=%5.2fms  errors=%" PRId64 "\n",
+        printf("[t=%4.0fs] conns=%5" PRId64 "/%d  qps=%7" PRId64 "  avg_lat=%5.2fms  errors=%" PRId64 "%s\n",
                elapsed,
                g_stats.connected.load(), cfg.conns,
                delta,
                lat_avg_us / 1000.0,
-               g_stats.errors.load());
+               g_stats.errors.load(),
+               last_err.empty() ? "" : ("  last_err: " + last_err).c_str());
     }
 }
 
@@ -218,25 +254,46 @@ int main(int argc, char * argv[])
 
     for (int i = 1; i < argc; ++i)
     {
-        if      (!strcmp(argv[i], "--mode")      && i + 1 < argc)
+        if (!strcmp(argv[i], "--mode") && i + 1 < argc)
         {
             ++i;
-            if      (!strcmp(argv[i], "tcp"))  cfg.mode = Config::Mode::Tcp;
-            else if (!strcmp(argv[i], "http")) cfg.mode = Config::Mode::Http;
-            else { fprintf(stderr, "Unknown mode: %s\n", argv[i]); return 1; }
+            if (!strcmp(argv[i], "tcp"))
+                cfg.mode = Config::Mode::Tcp;
+            else if (!strcmp(argv[i], "http"))
+                cfg.mode = Config::Mode::Http;
+            else
+            {
+                fprintf(stderr, "Unknown mode: %s\n", argv[i]);
+                return 1;
+            }
             mode_set = true;
         }
-        else if (!strcmp(argv[i], "--host")      && i + 1 < argc)  cfg.host       = argv[++i];
-        else if (!strcmp(argv[i], "--port")      && i + 1 < argc)  cfg.port       = (uint16_t)atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--ports")     && i + 1 < argc)  cfg.port_count = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--conns")     && i + 1 < argc)  cfg.conns      = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--ramp-rate") && i + 1 < argc)  cfg.ramp_rate  = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--duration")  && i + 1 < argc)  cfg.duration   = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--threads")   && i + 1 < argc)  cfg.threads    = atoi(argv[++i]);
-        else { print_usage(argv[0]); return 1; }
+        else if (!strcmp(argv[i], "--host") && i + 1 < argc)
+            cfg.host = argv[++i];
+        else if (!strcmp(argv[i], "--port") && i + 1 < argc)
+            cfg.port = (uint16_t)atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--ports") && i + 1 < argc)
+            cfg.port_count = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--conns") && i + 1 < argc)
+            cfg.conns = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--ramp-rate") && i + 1 < argc)
+            cfg.ramp_rate = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--duration") && i + 1 < argc)
+            cfg.duration = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--threads") && i + 1 < argc)
+            cfg.threads = atoi(argv[++i]);
+        else
+        {
+            print_usage(argv[0]);
+            return 1;
+        }
     }
 
-    if (!mode_set) { print_usage(argv[0]); return 1; }
+    if (!mode_set)
+    {
+        print_usage(argv[0]);
+        return 1;
+    }
 
     printf("stress_client  mode=%s  host=%s  port=%hu~%hu  conns=%d  ramp=%d/s  duration=%ds  threads=%d\n",
            cfg.mode == Config::Mode::Tcp ? "tcp" : "http",
@@ -261,7 +318,7 @@ int main(int argc, char * argv[])
     for (auto & t : pool)
         t.join();
 
-    int64_t reqs       = g_stats.requests.load();
+    int64_t reqs = g_stats.requests.load();
     int64_t lat_avg_us = (reqs > 0) ? g_stats.latency_us_sum.load() / reqs : 0;
     printf("\n=== Final ===\n"
            "  total requests : %" PRId64 "\n"
