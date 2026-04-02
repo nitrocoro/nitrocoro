@@ -46,19 +46,13 @@ static Task<HttpParseResult<HttpResponse>> parseResponse(io::StreamPtr stream, s
 }
 
 HttpClient::HttpClient(std::string baseUrl, HttpClientConfig config)
-    : HttpClient(std::move(baseUrl), nullptr, std::move(config))
+    : HttpClient(net::Url(std::move(baseUrl)), std::move(config))
 {
 }
 
-HttpClient::HttpClient(std::string baseUrl, StreamUpgrader upgrader, HttpClientConfig config)
-    : HttpClient(net::Url(std::move(baseUrl)), std::move(upgrader), std::move(config))
-{
-}
-
-HttpClient::HttpClient(net::Url url, StreamUpgrader upgrader, HttpClientConfig config)
+HttpClient::HttpClient(net::Url url, HttpClientConfig config)
     : baseUrl_(std::move(url))
     , config_(std::move(config))
-    , upgrader_(std::move(upgrader))
 {
     if (!baseUrl_.isValid())
         throw std::invalid_argument("Invalid base URL");
@@ -176,7 +170,7 @@ Task<io::StreamPtr> HttpClient::connect()
     {
         if (!upgrader_)
             throw std::runtime_error("HTTPS requires a StreamUpgrader");
-        auto stream = co_await upgrader_(conn, baseUrl_.host());
+        auto stream = co_await upgrader_(conn);
         if (!stream)
             throw std::runtime_error("Stream upgrade failed");
         co_return stream;

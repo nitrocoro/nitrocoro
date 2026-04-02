@@ -30,24 +30,25 @@ struct HttpClientConfig
 class HttpClient
 {
 public:
-    using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr, const std::string & hostname)>;
+    using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr)>;
 
     explicit HttpClient(std::string baseUrl, HttpClientConfig config = {});
-    explicit HttpClient(std::string baseUrl, StreamUpgrader upgrader, HttpClientConfig config = {});
-    explicit HttpClient(net::Url url, StreamUpgrader upgrader = nullptr, HttpClientConfig config = {});
+    explicit HttpClient(net::Url url, HttpClientConfig config = {});
 
-    ~HttpClient();
+    virtual ~HttpClient();
 
     HttpClient(const HttpClient &) = delete;
     HttpClient & operator=(const HttpClient &) = delete;
     HttpClient(HttpClient &&) = delete;
     HttpClient & operator=(HttpClient &&) = delete;
 
+    void setStreamUpgrader(StreamUpgrader upgrader) { upgrader_ = std::move(upgrader); }
+
     Task<HttpCompleteResponse> get(std::string path);
     Task<HttpCompleteResponse> post(std::string path, std::string body);
     Task<IncomingResponse> request(ClientRequest req);
 
-private:
+protected:
     struct IdleConnection
     {
         io::StreamPtr stream;

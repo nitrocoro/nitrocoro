@@ -6,6 +6,7 @@ if(TARGET nitrocoro-http AND TARGET nitrocoro-tls)
     target_link_libraries(https_integration_test PRIVATE 
         nitrocoro-http 
         nitrocoro-tls
+        nitrocoro-https
     )
     
     # OpenSSL is needed for test certificate generation
