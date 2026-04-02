@@ -1,9 +1,62 @@
 #include <nitrocoro/testing/Test.h>
 #include <nitrocoro/utils/Base64.h>
+#include <nitrocoro/utils/Format.h>
 #include <nitrocoro/utils/Md5.h>
 #include <nitrocoro/utils/Sha1.h>
 
 using namespace nitrocoro::utils;
+
+// ── Format ───────────────────────────────────────────────────────────────────
+
+NITRO_TEST(format_no_args)
+{
+    NITRO_CHECK_EQ(format("hello"), "hello");
+    NITRO_CHECK_EQ(format(""), "");
+    co_return;
+}
+
+NITRO_TEST(format_string_types)
+{
+    std::string s = "world";
+    std::string_view sv = "view";
+    NITRO_CHECK_EQ(format("hello {}", s), "hello world");
+    NITRO_CHECK_EQ(format("hello {}", sv), "hello view");
+    NITRO_CHECK_EQ(format("hello {}", "literal"), "hello literal");
+    NITRO_CHECK_EQ(format("hello {}", (const char *)nullptr), "hello (null)");
+    co_return;
+}
+
+NITRO_TEST(format_integral_types)
+{
+    NITRO_CHECK_EQ(format("{}", 42), "42");
+    NITRO_CHECK_EQ(format("{}", -1), "-1");
+    NITRO_CHECK_EQ(format("{}", 0u), "0");
+    NITRO_CHECK_EQ(format("{}", true), "true");
+    NITRO_CHECK_EQ(format("{}", false), "false");
+    NITRO_CHECK_EQ(format("{}", 'A'), "A");
+    co_return;
+}
+
+NITRO_TEST(format_floating_point)
+{
+    NITRO_CHECK_EQ(format("{}", 3.14), "3.14");
+    NITRO_CHECK_EQ(format("{}", 0.0), "0");
+    co_return;
+}
+
+NITRO_TEST(format_multiple_args)
+{
+    NITRO_CHECK_EQ(format("{} + {} = {}", 1, 2, 3), "1 + 2 = 3");
+    NITRO_CHECK_EQ(format("Hello, {}! You are {} years old.", "Alice", 30),
+                   "Hello, Alice! You are 30 years old.");
+    co_return;
+}
+
+NITRO_TEST(format_adjacent_placeholders)
+{
+    NITRO_CHECK_EQ(format("{}{}{}", "a", "b", "c"), "abc");
+    co_return;
+}
 
 // ── Base64 ────────────────────────────────────────────────────────────────────
 
