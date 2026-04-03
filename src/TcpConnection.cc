@@ -104,8 +104,8 @@ Task<TcpConnectionPtr> TcpConnection::connect(const InetAddress & addr)
 TcpConnection::TcpConnection(std::unique_ptr<Channel> channelPtr, std::shared_ptr<Socket> socket, InetAddress localAddr, InetAddress peerAddr)
     : socket_(std::move(socket))
     , ioChannelPtr_(std::move(channelPtr))
-    , localAddr_(localAddr)
-    , peerAddr_(peerAddr)
+    , localAddr_(std::move(localAddr))
+    , peerAddr_(std::move(peerAddr))
 {
     state_ = State::Connected;
     ioChannelPtr_->enableReading();

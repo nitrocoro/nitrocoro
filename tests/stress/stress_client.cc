@@ -11,6 +11,7 @@
  *                   [--ramp-rate R]     new conns/sec (default 100)
  *                   [--duration D]      seconds to hold after ramp (default 30)
  *                   [--threads T]       scheduler threads (default 1)
+ *                   [--interval MS]     sleep between requests in ms (default 0)
  */
 #include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/http/HttpClient.h>
@@ -49,6 +50,7 @@ struct Config
     int ramp_rate = 100;
     int duration = 30;
     int threads = 1;
+    int interval_ms = 0;
 };
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ static std::atomic<bool> g_done{ false };
 
 // ── Per-connection workers ────────────────────────────────────────────────────
 
-Task<> tcp_worker(InetAddress addr)
+Task<> tcp_worker(InetAddress addr, int interval_ms)
 {
     TcpConnectionPtr conn;
     try
@@ -109,6 +111,8 @@ Task<> tcp_worker(InetAddress addr)
                 break;
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
             g_stats.record(us);
+            if (interval_ms > 0)
+                co_await sleep(std::chrono::milliseconds(interval_ms));
         }
         catch (const std::exception & e)
         {
@@ -120,7 +124,7 @@ Task<> tcp_worker(InetAddress addr)
     --g_stats.connected;
 }
 
-Task<> http_worker(std::string base_url)
+Task<> http_worker(std::string base_url, int interval_ms)
 {
     HttpClient client(base_url);
     bool counted = false;
@@ -139,6 +143,8 @@ Task<> http_worker(std::string base_url)
                 counted = true;
             }
             g_stats.record(us);
+            if (interval_ms > 0)
+                co_await sleep(std::chrono::milliseconds(interval_ms));
         }
         catch (const std::exception & e)
         {
@@ -175,12 +181,12 @@ Task<> ramp_controller(Config cfg)
         if (cfg.mode == Config::Mode::Tcp)
         {
             InetAddress addr(cfg.host, port);
-            sched->spawn([addr]() -> Task<> { co_await tcp_worker(addr); });
+            sched->spawn([addr, cfg]() -> Task<> { co_await tcp_worker(addr, cfg.interval_ms); });
         }
         else
         {
             std::string url = "http://" + cfg.host + ":" + std::to_string(port);
-            sched->spawn([url]() -> Task<> { co_await http_worker(url); });
+            sched->spawn([url, cfg]() -> Task<> { co_await http_worker(url, cfg.interval_ms); });
         }
 
         co_await sleep(interval);
@@ -243,7 +249,8 @@ static void print_usage(const char * prog)
             "  --conns N      target concurrent connections (default 1000)\n"
             "  --ramp-rate R  new connections per second (default 100)\n"
             "  --duration D   seconds to hold after ramp (default 30)\n"
-            "  --threads T    client scheduler threads (default 1)\n",
+            "  --threads T    client scheduler threads (default 1)\n"
+            "  --interval MS  sleep between requests in ms (default 0)\n",
             prog);
 }
 
@@ -282,6 +289,8 @@ int main(int argc, char * argv[])
             cfg.duration = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--threads") && i + 1 < argc)
             cfg.threads = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--interval") && i + 1 < argc)
+            cfg.interval_ms = atoi(argv[++i]);
         else
         {
             print_usage(argv[0]);
@@ -295,11 +304,11 @@ int main(int argc, char * argv[])
         return 1;
     }
 
-    printf("stress_client  mode=%s  host=%s  port=%hu~%hu  conns=%d  ramp=%d/s  duration=%ds  threads=%d\n",
+    printf("stress_client  mode=%s  host=%s  port=%hu~%hu  conns=%d  ramp=%d/s  duration=%ds  threads=%d  interval=%dms\n",
            cfg.mode == Config::Mode::Tcp ? "tcp" : "http",
            cfg.host.c_str(),
            cfg.port, (uint16_t)(cfg.port + cfg.port_count - 1),
-           cfg.conns, cfg.ramp_rate, cfg.duration, cfg.threads);
+           cfg.conns, cfg.ramp_rate, cfg.duration, cfg.threads, cfg.interval_ms);
 
     std::vector<std::thread> pool;
     pool.reserve(cfg.threads);
