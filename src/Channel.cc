@@ -64,7 +64,17 @@ void Channel::handleIoEvents(Scheduler * scheduler, IoState * state, uint32_t ev
         }
     }
 
-    if (ev & (EPOLLIN | EPOLLHUP)) // (POLLIN | POLLPRI | POLLRDHUP)
+    if (ev & EPOLLRDHUP)
+    {
+        state->peerClosed = true;
+        // 直接调用回调
+        if (state->peerClosedCallback)
+        {
+            state->peerClosedCallback();
+        }
+    }
+
+    if (ev & (EPOLLIN | EPOLLHUP | EPOLLRDHUP))
     {
         state->readable = true;
         if (state->readableWaiter)

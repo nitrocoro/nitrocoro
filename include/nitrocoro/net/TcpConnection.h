@@ -48,14 +48,14 @@ public:
         Closed
     };
 
-    State state() const { return state_; }
+    State state() const { return state_->load(); }
     const InetAddress & localAddr() const { return localAddr_; }
     const InetAddress & peerAddr() const { return peerAddr_; }
 
 private:
     std::shared_ptr<Socket> socket_;
     std::unique_ptr<Channel> ioChannelPtr_;
-    State state_ = State::None;
+    std::shared_ptr<std::atomic<State>> state_;
     InetAddress localAddr_;
     InetAddress peerAddr_;
 };

@@ -104,11 +104,19 @@ Task<TcpConnectionPtr> TcpConnection::connect(const InetAddress & addr)
 TcpConnection::TcpConnection(std::unique_ptr<Channel> channelPtr, std::shared_ptr<Socket> socket, InetAddress localAddr, InetAddress peerAddr)
     : socket_(std::move(socket))
     , ioChannelPtr_(std::move(channelPtr))
+    , state_(std::make_shared<std::atomic<State>>(State::Connected))
     , localAddr_(std::move(localAddr))
     , peerAddr_(std::move(peerAddr))
 {
-    state_ = State::Connected;
     ioChannelPtr_->enableReading();
+
+    ioChannelPtr_->setPeerClosedCallback([state = state_]() {
+        State expected = State::Connected;
+        state->compare_exchange_strong(expected, State::PeerShutdown);
+
+        expected = State::LocalShutdown;
+        state->compare_exchange_strong(expected, State::Closed);
+    });
 }
 
 TcpConnection::~TcpConnection() = default;
@@ -119,15 +127,15 @@ Task<size_t> TcpConnection::read(void * buf, size_t len)
     auto result = co_await ioChannelPtr_->performRead(&reader);
     if (result == Channel::IoResult::Eof)
     {
-        if (state_ == State::LocalShutdown)
-            state_ = State::Closed;
+        if (state_->load() == State::LocalShutdown)
+            state_->store(State::Closed);
         else
-            state_ = State::PeerShutdown;
+            state_->store(State::PeerShutdown);
         co_return 0;
     }
     if (result != Channel::IoResult::Success)
     {
-        state_ = State::Closed;
+        state_->store(State::Closed);
         throw std::runtime_error(strerror(reader.savedErrno()));
     }
     co_return reader.readLen();
@@ -139,12 +147,12 @@ Task<size_t> TcpConnection::write(const void * buf, size_t len)
     auto result = co_await ioChannelPtr_->performWrite(&writer);
     if (result == Channel::IoResult::Eof)
     {
-        state_ = State::Closed;
+        state_->store(State::Closed);
         co_return 0;
     }
     if (result != Channel::IoResult::Success)
     {
-        state_ = State::Closed;
+        state_->store(State::Closed);
         throw std::runtime_error(strerror(writer.savedErrno()));
     }
     co_return len;
@@ -154,13 +162,14 @@ Task<> TcpConnection::shutdown()
 {
     co_await ioChannelPtr_->scheduler()->switch_to();
 
-    if (state_ == State::LocalShutdown || state_ == State::Closed)
+    auto currentState = state_->load();
+    if (currentState == State::LocalShutdown || currentState == State::Closed)
         co_return;
 
-    if (state_ == State::PeerShutdown)
-        state_ = State::Closed;
+    if (currentState == State::PeerShutdown)
+        state_->store(State::Closed);
     else
-        state_ = State::LocalShutdown;
+        state_->store(State::LocalShutdown);
 
     socket_->shutdownWrite();
 }
@@ -169,7 +178,7 @@ Task<> TcpConnection::forceClose()
 {
     co_await ioChannelPtr_->scheduler()->switch_to();
 
-    state_ = State::Closed;
+    state_->store(State::Closed);
     ioChannelPtr_->disableAll();
     ioChannelPtr_->cancelAll();
     ioChannelPtr_.reset();

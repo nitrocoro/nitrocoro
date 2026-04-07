@@ -63,6 +63,12 @@ public:
     TriggerMode triggerMode() const { return triggerMode_; }
     uint32_t events() const { return events_; }
     bool errored() const { return state_->errored; }
+    bool peerClosed() const { return state_->peerClosed; }
+
+    void setPeerClosedCallback(std::function<void()> callback)
+    {
+        state_->peerClosedCallback = std::move(callback);
+    }
 
     // Following methods MUST be called from Scheduler's thread
     void enableReading();
@@ -139,10 +145,12 @@ private:
         bool readable{ false };
         bool writable{ true };
         bool errored{ false };
+        bool peerClosed{ false };
         std::coroutine_handle<> readableWaiter;
         std::coroutine_handle<> writableWaiter;
         bool readCanceled{ false };
         bool writeCanceled{ false };
+        std::function<void()> peerClosedCallback;
     };
 
     // Called by Scheduler::process_io_events() when epoll reports events

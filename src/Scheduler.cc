@@ -162,7 +162,7 @@ void Scheduler::process_io_events(int timeout_ms)
             continue;
         }
         auto * ctx = &iter->second;
-        NITRO_TRACE("fd %d event %d: IN: %d, OUT: %d, ERR: %d",
+        NITRO_TRACE("fd %d event %x: IN: %x, OUT: %x, ERR: %x",
                     fd,
                     ev,
                     ev & EPOLLIN,
@@ -278,7 +278,7 @@ void Scheduler::updateIo(int fd, uint64_t id, uint32_t events, TriggerMode mode)
             epoll_event ev{};
             if (::epoll_ctl(epollFd_, EPOLL_CTL_DEL, fd, &ev) < 0)
             {
-                NITRO_ERROR("Failed to call EPOLL_CTL_DEL on epoll %d fd %d errno %d: %s\n", epollFd_, fd, errno, strerror(errno));
+                NITRO_ERROR("Failed to call EPOLL_CTL_DEL on epoll %d fd %d errno %d: %s", epollFd_, fd, errno, strerror(errno));
                 // throw std::runtime_error("Failed to call EPOLL_CTL_DEL on epoll");
             }
             ctx->addedToEpoll = false;
@@ -287,7 +287,7 @@ void Scheduler::updateIo(int fd, uint64_t id, uint32_t events, TriggerMode mode)
     }
 
     epoll_event ev{};
-    ev.events = events | (mode == TriggerMode::EdgeTriggered ? EPOLLET : 0);
+    ev.events = events | EPOLLRDHUP | (mode == TriggerMode::EdgeTriggered ? EPOLLET : 0);
     ev.data.fd = fd;
 
     int op = ctx->addedToEpoll ? EPOLL_CTL_MOD : EPOLL_CTL_ADD;
