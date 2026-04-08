@@ -4,11 +4,12 @@
  */
 #include <nitrocoro/websocket/WsServer.h>
 
+#include "WsContextImpl.h"
+
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/utils/Base64.h>
 #include <nitrocoro/utils/Debug.h>
 #include <nitrocoro/utils/Sha1.h>
-#include <nitrocoro/websocket/WsContext.h>
 #include <nitrocoro/websocket/WsTypes.h>
 
 static std::string computeAccept(const std::string & key)
@@ -56,7 +57,7 @@ Task<http::HttpServer::StreamHandler> WsServer::handleUpgrade(http::IncomingRequ
 
     req->pathParams() = std::move(std::move(result.params));
     auto connPromisePtr = std::make_shared<Promise<WsConnection>>();
-    auto ctx = std::make_shared<WsContext>(req, resp, connPromisePtr->get_future());
+    auto ctx = std::make_shared<WsContextImpl>(req, resp, connPromisePtr->get_future());
 
     Scheduler::current()->spawn([ctx, handler = std::move(result.handler)]() mutable -> Task<> {
         try
@@ -72,7 +73,7 @@ Task<http::HttpServer::StreamHandler> WsServer::handleUpgrade(http::IncomingRequ
             NITRO_ERROR("WsServer handler unknown exception");
         }
     });
-    auto acceptFuture = ctx->acceptPromise_.get_future();
+    auto acceptFuture = ctx->acceptFuture();
     ctx.reset(); // allow ctx to destruct
 
     bool accepted = co_await acceptFuture.get();

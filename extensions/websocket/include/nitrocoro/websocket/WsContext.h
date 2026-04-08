@@ -6,10 +6,7 @@
 #pragma once
 #include <nitrocoro/websocket/WsConnection.h>
 
-#include <nitrocoro/core/Future.h>
 #include <nitrocoro/http/HttpStream.h>
-
-#include <atomic>
 
 namespace nitrocoro::websocket
 {
@@ -20,23 +17,12 @@ using WsContextPtr = std::shared_ptr<WsContext>;
 class WsContext
 {
 public:
-    WsContext(http::IncomingRequestPtr req,
-              http::ServerResponsePtr resp,
-              Future<WsConnection> connFuture);
-    ~WsContext();
+    virtual ~WsContext() = default;
 
     /** Completes the WebSocket handshake and returns the established connection. */
-    Task<WsConnection> accept();
-
-    http::IncomingRequestPtr req;
-    http::ServerResponsePtr resp;
-
-private:
-    friend class WsServer;
-
-    std::atomic_flag accepted_{};
-    Promise<bool> acceptPromise_;
-    Future<WsConnection> connFuture_;
+    virtual const http::IncomingRequestPtr & req() const = 0;
+    virtual const http::ServerResponsePtr & resp() const = 0;
+    virtual Task<WsConnection> accept() = 0;
 };
 
 } // namespace nitrocoro::websocket

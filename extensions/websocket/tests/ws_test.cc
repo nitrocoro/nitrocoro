@@ -234,7 +234,7 @@ NITRO_TEST(ws_router_path_params)
     std::string receivedId;
 
     ws.route("/ws/room/:id", [&receivedId](WsContextPtr wsCtx) -> Task<> {
-        receivedId = wsCtx->req->pathParams().at("id");
+        receivedId = wsCtx->req()->pathParams().at("id");
         auto conn = co_await wsCtx->accept();
         co_await conn.send(receivedId);
         co_await conn.shutdown();
@@ -273,9 +273,9 @@ NITRO_TEST(ws_context_req_resp)
     WsServer ws;
 
     ws.route("/ws", [&TEST_CTX](WsContextPtr wsCtx) -> Task<> {
-        auto & key = wsCtx->req->getHeader(http::HttpHeader::NameCode::SecWebSocketKey);
+        auto & key = wsCtx->req()->getHeader(http::HttpHeader::NameCode::SecWebSocketKey);
         NITRO_REQUIRE(!key.empty());
-        wsCtx->resp->setHeader("X-Custom-Header", "nitrocoro-ws");
+        wsCtx->resp()->setHeader("X-Custom-Header", "nitrocoro-ws");
         auto conn = co_await wsCtx->accept();
         co_await conn.shutdown();
     });
@@ -308,8 +308,8 @@ NITRO_TEST(ws_context_reject)
     WsServer ws;
 
     ws.route("/ws", [](WsContextPtr wsCtx) -> Task<> {
-        wsCtx->resp->setStatus(http::StatusCode::k403Forbidden);
-        wsCtx->resp->setBody("forbidden");
+        wsCtx->resp()->setStatus(http::StatusCode::k403Forbidden);
+        wsCtx->resp()->setBody("forbidden");
         // wsCtx destructor fires accepted_=false → acceptPromise_.set_value(false)
         co_return;
     });
