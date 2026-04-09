@@ -229,7 +229,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         {
             co_await response->flush(stream);
             co_await handler(stream);
-            co_return { Action::Disconnected };
+            co_return { Action::Close };
         }
         co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
     }
@@ -341,21 +341,25 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
     while (true)
     {
         auto result = co_await handleNextRequest(stream, buffer);
-        if (result.action == Action::Disconnected)
+        if (result.action == Action::Disconnected || !result.resp)
             break;
 
         // flush resp
         co_await result.resp->flush(stream);
 
-        if (result.bodyReader && !result.bodyReader->isComplete())
-            co_await result.bodyReader->drain();
+        if (result.action == Action::Continue)
+        {
+            if (result.bodyReader && !result.bodyReader->isComplete())
+                co_await result.bodyReader->drain();
+            continue;
+        }
+
         if (result.action == Action::Shutdown)
         {
             co_await stream->shutdown();
-            break;
         }
-        if (result.action == Action::Close)
-            break;
+        // Close
+        break;
     }
 }
 

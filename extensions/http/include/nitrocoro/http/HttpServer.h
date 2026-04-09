@@ -31,7 +31,7 @@ public:
     using StreamUpgrader = std::function<Task<io::StreamPtr>(net::TcpConnectionPtr)>;
     using StreamHandler = std::function<Task<>(io::StreamPtr)>;
     // RequestUpgrader: called when request has "Connection: Upgrade".
-    // Returns a StreamHandler to take over the connection, or nullopt to decline.
+    // Returns a StreamHandler to take over the connection, or nullptr to decline.
     // HttpServer flushes the response before invoking the StreamHandler.
     using RequestUpgrader = std::function<Task<StreamHandler>(IncomingRequestPtr, ServerResponsePtr)>;
 
