@@ -229,9 +229,8 @@ void HttpOutgoingMessageBase<DataType>::buildHeaders(
         }
 
         bool needClose = (overrideCloseConnection || closeConnection_) && data_.version != Version::kHttp10;
-        bool needKeepAlive = !closeConnection_ && data_.version == Version::kHttp10;
-        if ((needClose || needKeepAlive)
-            && (overrideCloseConnection || !data_.headers.contains(HttpHeader::Name::Connection_L)))
+        bool needKeepAlive = !overrideCloseConnection && !closeConnection_ && data_.version == Version::kHttp10;
+        if ((needClose || needKeepAlive) && !data_.headers.contains(HttpHeader::Name::Connection_L))
         {
             buf.append(needClose ? "Connection: close\r\n" : "Connection: keep-alive\r\n");
         }

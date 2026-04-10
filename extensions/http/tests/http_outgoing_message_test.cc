@@ -97,7 +97,7 @@ NITRO_TEST(outgoing_response_http10_streaming_fallback)
     co_await resp.flush(stream);
 
     NITRO_CHECK(!hasHeader(mock->data, "Transfer-Encoding"));
-    NITRO_CHECK(hasHeader(mock->data, "Connection", "close"));
+    NITRO_CHECK(!hasHeader(mock->data, "Connection"));
     NITRO_CHECK(mock->data.find("HTTP/1.0") != std::string::npos);
 }
 
@@ -200,7 +200,7 @@ NITRO_TEST(outgoing_response_http10_streaming_override_connection)
     resp.setBody([](auto & w) -> Task<> { co_await w.write("data"); });
     co_await resp.flush(stream);
 
-    NITRO_CHECK(hasHeader(mock->data, "Connection", "close"));
+    NITRO_CHECK(!hasHeader(mock->data, "Connection", "keep-alive"));
 }
 
 /** HTTP/1.0 request with setKeepAlive(true) produces Connection: keep-alive. */

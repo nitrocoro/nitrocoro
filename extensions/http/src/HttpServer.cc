@@ -176,6 +176,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     auto method = request->method();
     bool ignoreBody = (method == methods::Head);
     auto response = std::make_shared<ServerResponse>(ignoreBody, config_.send_date_header);
+    response->setVersion(request->version());
     response->setCloseConnection(!keepAlive);
 
     if (method == methods::_Invalid)
@@ -222,6 +223,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         if (exPtr)
         {
             response->clear();
+            response->setVersion(request->version());
             response->setCloseConnection(true);
             response->setStatus(StatusCode::k500InternalServerError);
             response->setBody("Internal Server Error");
@@ -311,6 +313,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     {
         keepAlive = false;
         response->clear();
+        response->setVersion(request->version());
         response->setCloseConnection(true);
         response->setStatus(StatusCode::k500InternalServerError);
         response->setBody("Internal Server Error");
