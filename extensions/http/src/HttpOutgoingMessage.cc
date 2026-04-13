@@ -200,8 +200,8 @@ void HttpOutgoingMessageBase<DataType>::buildHeaders(
             }
             buf.append("\r\n");
         }
-        bool needClose = closeConnection_ && data_.version != Version::kHttp10;
-        bool needKeepAlive = !closeConnection_ && data_.version == Version::kHttp10;
+        bool needClose = !data_.keepAlive && data_.version != Version::kHttp10;
+        bool needKeepAlive = data_.keepAlive && data_.version == Version::kHttp10;
         if ((needClose || needKeepAlive) && !data_.headers.contains(HttpHeader::Name::Connection_L))
         {
             buf.append(needClose ? "Connection: close\r\n" : "Connection: keep-alive\r\n");
@@ -228,8 +228,8 @@ void HttpOutgoingMessageBase<DataType>::buildHeaders(
             buf.append("Date: ").append(dateBuf).append("\r\n");
         }
 
-        bool needClose = (overrideCloseConnection || closeConnection_) && data_.version != Version::kHttp10;
-        bool needKeepAlive = !overrideCloseConnection && !closeConnection_ && data_.version == Version::kHttp10;
+        bool needClose = (overrideCloseConnection || data_.shouldClose) && data_.version != Version::kHttp10;
+        bool needKeepAlive = !overrideCloseConnection && !data_.shouldClose && data_.version == Version::kHttp10;
         if ((needClose || needKeepAlive) && !data_.headers.contains(HttpHeader::Name::Connection_L))
         {
             buf.append(needClose ? "Connection: close\r\n" : "Connection: keep-alive\r\n");
@@ -402,7 +402,11 @@ void HttpOutgoingMessage<HttpResponse>::setStatus(StatusCode code, const std::st
 
 void HttpOutgoingMessage<HttpResponse>::clear()
 {
-    data_ = {};
+    data_.statusCode = static_cast<uint16_t>(StatusCode::k200OK);
+    data_.statusReason.clear();
+    data_.headers.clear();
+    data_.cookies.clear();
+
     body_.clear();
     bodyWriterFn_ = nullptr;
 }

@@ -34,9 +34,9 @@ struct HttpRequest
     HttpQueryMap queries;
 
     // Metadata parsed from headers
-    TransferMode transferMode = TransferMode::UntilClose;
+    TransferMode transferMode = TransferMode::ContentLength;
     size_t contentLength = 0;
-    bool keepAlive = false;
+    bool keepAlive = true;
 };
 
 struct HttpResponse
