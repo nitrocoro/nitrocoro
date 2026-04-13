@@ -3,13 +3,13 @@
  * @brief Body writer for Content-Length based transfer
  */
 #pragma once
-#include <nitrocoro/http/BodyWriter.h>
+#include "../Http1BodyWriter.h"
 #include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
 
-class ContentLengthWriter : public BodyWriter
+class ContentLengthWriter : public Http1BodyWriter
 {
 public:
     ContentLengthWriter(io::StreamPtr stream, size_t contentLength)

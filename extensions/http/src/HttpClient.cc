@@ -4,13 +4,15 @@
  */
 #include <nitrocoro/http/HttpClient.h>
 
+#include "Http1BodyReader.h"
+#include "Http1RequestSink.h"
+#include "HttpParser.h"
 #include <nitrocoro/http/stream/HttpOutgoingMessage.h>
+
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/Dns.h>
 #include <nitrocoro/net/Url.h>
-
-#include "Http1RequestSink.h"
-#include "HttpParser.h"
+#include <nitrocoro/utils/StringBuffer.h>
 #include <stdexcept>
 
 namespace nitrocoro::http
@@ -89,7 +91,7 @@ Task<IncomingResponse> HttpClient::doRequest(ClientRequest req, io::StreamPtr st
     }
 
     bool ignoreBody = req.data_.method == methods::Head;
-    auto bodyReader = BodyReader::create(stream, buffer, msg.transferMode, ignoreBody ? 0 : msg.contentLength);
+    auto bodyReader = Http1BodyReader::create(stream, buffer, msg.transferMode, ignoreBody ? 0 : msg.contentLength);
     co_return IncomingResponse(std::move(msg), std::move(bodyReader));
 }
 

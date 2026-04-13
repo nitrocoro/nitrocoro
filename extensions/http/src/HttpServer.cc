@@ -4,13 +4,14 @@
  */
 #include <nitrocoro/http/HttpServer.h>
 
+#include "Http1BodyReader.h"
 #include "Http1ResponseSink.h"
 #include "HttpParser.h"
-
-#include <nitrocoro/core/Future.h>
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/http/HttpRouter.h>
+
+#include <nitrocoro/core/Future.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/utils/Debug.h>
 
@@ -171,7 +172,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     auto transferMode = parsedMsg.transferMode;
     auto contentLength = parsedMsg.contentLength;
 
-    auto bodyReader = BodyReader::create(stream, buffer, transferMode, contentLength);
+    auto bodyReader = Http1BodyReader::create(stream, buffer, transferMode, contentLength);
     auto request = std::make_shared<IncomingRequest>(std::move(parsedMsg), bodyReader);
 
     auto method = request->method();

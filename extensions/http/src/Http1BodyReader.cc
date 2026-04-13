@@ -1,8 +1,8 @@
 /**
- * @file BodyReader.cc
- * @brief Implementation for BodyReader
+ * @file Http1BodyReader.cc
+ * @brief Implementation for creating body readers
  */
-#include <nitrocoro/http/BodyReader.h>
+#include "Http1BodyReader.h"
 
 #include "body_reader/ChunkedReader.h"
 #include "body_reader/ContentLengthReader.h"
@@ -11,7 +11,7 @@
 namespace nitrocoro::http
 {
 
-class NoopReader : public BodyReader
+class NoopReader : public Http1BodyReader
 {
 public:
     bool isComplete() const override { return true; }
@@ -20,7 +20,7 @@ protected:
     Task<size_t> readImpl(char *, size_t) override { co_return 0; }
 };
 
-std::shared_ptr<BodyReader> BodyReader::create(
+std::shared_ptr<BodyReader> Http1BodyReader::create(
     io::StreamPtr stream,
     std::shared_ptr<utils::StringBuffer> buffer,
     TransferMode mode,
@@ -43,7 +43,7 @@ std::shared_ptr<BodyReader> BodyReader::create(
     return std::make_shared<UntilCloseReader>(std::move(stream), std::move(buffer));
 }
 
-Task<size_t> BodyReader::read(char * buf, size_t len)
+Task<size_t> Http1BodyReader::read(char * buf, size_t len)
 {
     [[maybe_unused]] auto lock = co_await mutex_.scoped_lock();
     if (draining_ || isComplete())
@@ -51,7 +51,7 @@ Task<size_t> BodyReader::read(char * buf, size_t len)
     co_return co_await readImpl(buf, len);
 }
 
-Task<> BodyReader::drain()
+Task<> Http1BodyReader::drain()
 {
     [[maybe_unused]] auto lock = co_await mutex_.scoped_lock();
     draining_ = true;

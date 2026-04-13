@@ -1,6 +1,6 @@
 add_library(nitrocoro-http STATIC
-    src/BodyReader.cc
-    src/BodyWriter.cc
+    src/Http1BodyReader.cc
+    src/Http1BodyWriter.cc
     src/Cookie.cc
     src/CookieStore.cc
     src/Form.cc

@@ -3,13 +3,13 @@
  * @brief Body reader for chunked transfer encoding
  */
 #pragma once
-#include <nitrocoro/http/BodyReader.h>
+#include "../Http1BodyReader.h"
 #include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
 
-class ChunkedReader : public BodyReader
+class ChunkedReader : public Http1BodyReader
 {
 public:
     ChunkedReader(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer)

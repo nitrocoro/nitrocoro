@@ -3,13 +3,13 @@
  * @brief Body writer for chunked transfer encoding
  */
 #pragma once
-#include <nitrocoro/http/BodyWriter.h>
+#include "../Http1BodyWriter.h"
 #include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
 
-class ChunkedWriter : public BodyWriter
+class ChunkedWriter : public Http1BodyWriter
 {
 public:
     explicit ChunkedWriter(io::StreamPtr stream)

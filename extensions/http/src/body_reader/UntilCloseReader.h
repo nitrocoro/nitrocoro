@@ -3,13 +3,13 @@
  * @brief Body reader that reads until connection closes
  */
 #pragma once
-#include <nitrocoro/http/BodyReader.h>
+#include "../Http1BodyReader.h"
 #include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
 
-class UntilCloseReader : public BodyReader
+class UntilCloseReader : public Http1BodyReader
 {
 public:
     UntilCloseReader(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer)

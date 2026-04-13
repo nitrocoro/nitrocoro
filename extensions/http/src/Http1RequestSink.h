@@ -3,6 +3,7 @@
  * @brief HTTP/1.1 RequestSink implementation
  */
 #pragma once
+#include <nitrocoro/http/BodyWriter.h>
 #include <nitrocoro/http/RequestSink.h>
 
 #include <nitrocoro/io/Stream.h>

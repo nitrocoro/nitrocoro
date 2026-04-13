@@ -2,16 +2,12 @@
  * @file HttpOutgoingMessage.cc
  * @brief HTTP outgoing stream implementations
  */
-#include <nitrocoro/http/BodyWriter.h>
-#include <nitrocoro/http/Cookie.h>
-#include <nitrocoro/http/RequestSink.h>
-#include <nitrocoro/http/ResponseSink.h>
 #include <nitrocoro/http/stream/HttpOutgoingMessage.h>
 
-#include <nitrocoro/utils/Debug.h>
-
-#include <ctime>
+#include "Http1BodyWriter.h"
 #include <nitrocoro/http/HttpUtils.h>
+#include <nitrocoro/http/RequestSink.h>
+#include <nitrocoro/http/ResponseSink.h>
 
 namespace nitrocoro::http::detail
 {

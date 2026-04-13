@@ -4,7 +4,7 @@
  */
 #include "Http1RequestSink.h"
 
-#include <nitrocoro/http/BodyWriter.h>
+#include "Http1BodyWriter.h"
 #include <nitrocoro/http/HttpHeader.h>
 #include <nitrocoro/http/HttpUtils.h>
 
@@ -36,9 +36,8 @@ Task<> Http1RequestSink::sendStream(const HttpRequest & req, const BodyWriterFn 
     buf.append("\r\n");
     co_await stream_->write(buf.data(), buf.size());
 
-    auto bodyWriter = BodyWriter::create(mode, stream_);
-    BodyStream bodyStream(bodyWriter.get());
-    co_await bodyWriterFn(bodyStream);
+    auto bodyWriter = Http1BodyWriter::create(mode, stream_);
+    co_await bodyWriterFn(*bodyWriter);
     co_await bodyWriter->end();
 }
 

@@ -1,8 +1,8 @@
 /**
- * @file BodyWriter.cc
+ * @file Http1BodyWriter.cc
  * @brief Factory implementation for creating body writers
  */
-#include <nitrocoro/http/BodyWriter.h>
+#include "Http1BodyWriter.h"
 
 #include "body_writer/ChunkedWriter.h"
 #include "body_writer/ContentLengthWriter.h"
@@ -11,7 +11,7 @@
 namespace nitrocoro::http
 {
 
-std::unique_ptr<BodyWriter> BodyWriter::create(
+std::unique_ptr<Http1BodyWriter> Http1BodyWriter::create(
     TransferMode mode,
     io::StreamPtr stream,
     size_t contentLength)

@@ -1,15 +1,11 @@
 /**
  * @file BodyWriter.h
- * @brief Body writer interface and factory
+ * @brief Body writer interface
  */
 #pragma once
-#include <nitrocoro/http/HttpTypes.h>
-
 #include <nitrocoro/core/Task.h>
-#include <nitrocoro/io/Stream.h>
 
 #include <functional>
-#include <memory>
 #include <string_view>
 
 namespace nitrocoro::http
@@ -19,31 +15,9 @@ class BodyWriter
 {
 public:
     virtual ~BodyWriter() = default;
-
     virtual Task<> write(std::string_view data) = 0;
-    virtual Task<> end() = 0;
-
-    static std::unique_ptr<BodyWriter> create(
-        TransferMode mode,
-        io::StreamPtr stream,
-        size_t contentLength = 0);
 };
 
-class BodyStream
-{
-public:
-    explicit BodyStream(BodyWriter * writer)
-        : writer_(writer) {}
-
-    BodyStream(const BodyStream &) = delete;
-    BodyStream(BodyStream &&) = delete;
-
-    Task<> write(std::string_view data) { return writer_->write(data); }
-
-private:
-    BodyWriter * writer_;
-};
-
-using BodyWriterFn = std::function<Task<>(BodyStream &)>;
+using BodyWriterFn = std::function<Task<>(BodyWriter &)>;
 
 } // namespace nitrocoro::http

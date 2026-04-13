@@ -3,13 +3,13 @@
  * @brief Body writer for close-delimited transfer (HTTP/1.0 fallback)
  */
 #pragma once
-#include <nitrocoro/http/BodyWriter.h>
+#include "../Http1BodyWriter.h"
 #include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
 
-class UntilCloseWriter : public BodyWriter
+class UntilCloseWriter : public Http1BodyWriter
 {
 public:
     explicit UntilCloseWriter(io::StreamPtr stream)

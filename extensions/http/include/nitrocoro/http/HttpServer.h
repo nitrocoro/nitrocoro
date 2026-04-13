@@ -9,6 +9,7 @@
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/TcpServer.h>
+#include <nitrocoro/utils/StringBuffer.h>
 
 #include <functional>
 #include <memory>

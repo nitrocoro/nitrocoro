@@ -5,10 +5,10 @@
 #pragma once
 #include <nitrocoro/http/HttpStream.h>
 
+#include <nitrocoro/core/CoroTraits.h>
 #include <nitrocoro/core/Task.h>
 
 #include <memory>
-#include <string>
 
 namespace nitrocoro::http
 {

@@ -4,6 +4,7 @@
  */
 #include <nitrocoro/http/StaticFiles.h>
 
+#include <nitrocoro/core/Scheduler.h>
 #include <nitrocoro/http/HttpStream.h>
 
 #include <algorithm>
@@ -189,19 +190,19 @@ private:
 struct SchedulerCaches
 {
     std::shared_mutex mutex;
-    std::unordered_map<Scheduler *, std::unique_ptr<FileCache>> map;
+    std::unordered_map<Scheduler *, std::unique_ptr<FileCache>> cacheMap;
 
     FileCache * getCurrent()
     {
         Scheduler * sched = Scheduler::current();
         {
             std::shared_lock lock(mutex);
-            auto it = map.find(sched);
-            if (it != map.end())
+            auto it = cacheMap.find(sched);
+            if (it != cacheMap.end())
                 return it->second.get();
         }
         std::unique_lock lock(mutex);
-        auto & ptr = map[sched];
+        auto & ptr = cacheMap[sched];
         if (!ptr)
             ptr = std::make_unique<FileCache>();
         return ptr.get();

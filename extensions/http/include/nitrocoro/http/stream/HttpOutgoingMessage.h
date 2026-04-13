@@ -16,11 +16,6 @@
 #include <string>
 #include <string_view>
 
-namespace nitrocoro::http2
-{
-class Http2Session;
-}
-
 namespace nitrocoro::http
 {
 

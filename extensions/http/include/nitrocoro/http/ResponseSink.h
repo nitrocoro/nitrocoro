@@ -3,8 +3,8 @@
  * @brief Protocol-agnostic interface for sending HTTP responses
  */
 #pragma once
-#include <nitrocoro/http/BodyWriter.h>
 #include <nitrocoro/http/HttpMessage.h>
+#include <nitrocoro/http/BodyWriter.h>
 
 #include <nitrocoro/core/Task.h>
 

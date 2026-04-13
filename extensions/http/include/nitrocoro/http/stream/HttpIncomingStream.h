@@ -7,6 +7,7 @@
 #include <nitrocoro/http/HttpMessage.h>
 
 #include <nitrocoro/core/Task.h>
+#include <nitrocoro/utils/WriteBuffer.h>
 
 #include <memory>
 #include <string>
@@ -26,11 +27,7 @@ public:
     Task<size_t> read(char * buf, size_t maxLen);
     Task<std::string> read(size_t maxLen);
 
-    template <utils::ExtendableBuffer T>
-    Task<size_t> readToEnd(T & buf)
-    {
-        co_return co_await bodyReader_->readToEnd(buf);
-    }
+    Task<size_t> readToEnd(utils::WriteBuffer & buf);
 
 protected:
     std::shared_ptr<BodyReader> bodyReader_;

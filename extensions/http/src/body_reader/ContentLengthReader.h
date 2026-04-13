@@ -3,13 +3,13 @@
  * @brief Body reader for Content-Length based transfer
  */
 #pragma once
-#include <nitrocoro/http/BodyReader.h>
+#include "../Http1BodyReader.h"
 #include <nitrocoro/io/Stream.h>
 
 namespace nitrocoro::http
 {
 
-class ContentLengthReader : public BodyReader
+class ContentLengthReader : public Http1BodyReader
 {
 public:
     ContentLengthReader(io::StreamPtr stream, std::shared_ptr<utils::StringBuffer> buffer, size_t contentLength)

@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include <nitrocoro/utils/WriteBuffer.h>
+
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -14,7 +16,7 @@ namespace nitrocoro::utils
 /**
  * @brief String buffer with read/write offsets.
  */
-class StringBuffer
+class StringBuffer : public WriteBuffer
 {
 public:
     explicit StringBuffer() = default;
@@ -38,7 +40,7 @@ public:
     }
 
     // Prepare space for writing, returns pointer to write position
-    char * prepareWrite(size_t len)
+    char * prepareWrite(size_t len) override
     {
         if (buffer_.size() - writeOffset_ < len)
         {
@@ -59,13 +61,13 @@ public:
     }
 
     // Get write begin position (without growing)
-    char * beginWrite() { return buffer_.data() + writeOffset_; }
+    char * beginWrite() override { return buffer_.data() + writeOffset_; }
 
     // Get writable size (without growing)
-    size_t writableSize() const { return buffer_.size() - writeOffset_; }
+    size_t writableSize() const override { return buffer_.size() - writeOffset_; }
 
     // Commit actual written bytes
-    void commitWrite(size_t len) { writeOffset_ += len; }
+    void commitWrite(size_t len) override { writeOffset_ += len; }
 
     // Get size of unconsumed data
     size_t remainSize() const { return writeOffset_ - readOffset_; }
