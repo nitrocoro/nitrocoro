@@ -20,42 +20,19 @@ namespace nitrocoro::http2::hpack
 struct HuffSymbol
 {
     uint32_t code;
-    uint8_t  bits;
+    uint8_t bits;
 };
 
 // RFC 7541 Appendix B - 257 symbols (0-255 + EOS=256)
 static const HuffSymbol kHuffTable[257] = {
-    {0x1ff8,13},{0x7fffd8,23},{0xfffffe2,28},{0xfffffe3,28},{0xfffffe4,28},{0xfffffe5,28},{0xfffffe6,28},{0xfffffe7,28},
-    {0xfffffe8,28},{0xffffea,24},{0x3ffffffc,30},{0xfffffe9,28},{0xfffffea,28},{0x3ffffffd,30},{0xfffffeb,28},{0xfffffec,28},
-    {0xfffffed,28},{0xfffffee,28},{0xfffffef,28},{0xffffff0,28},{0xffffff1,28},{0xffffff2,28},{0x3ffffffe,30},{0xffffff3,28},
-    {0xffffff4,28},{0xffffff5,28},{0xffffff6,28},{0xffffff7,28},{0xffffff8,28},{0xffffff9,28},{0xffffffa,28},{0xffffffb,28},
-    {0x14,6},{0x3f8,10},{0x3f9,10},{0x7fa,11},{0x1ff9,13},{0x15,6},{0xf8,8},{0x7fb,11},
-    {0x7fc,11},{0x7fd,11},{0x7fe,11},{0x7ff,11},{0x55,7},{0x56,7},{0x57,7},{0x58,7},
-    {0x0,5},{0x1,5},{0x2,5},{0x19,6},{0x1a,6},{0x1b,6},{0x1c,6},{0x1d,6},
-    {0x1e,6},{0x1f,6},{0x5c,7},{0xfb,8},{0x7ffd,15},{0x59,7},{0x7ffe,15},{0x3fa,10},
-    {0x1ffa,13},{0x21,6},{0x5d,7},{0x5e,7},{0x5f,7},{0x60,7},{0x61,7},{0x62,7},
-    {0x63,7},{0x64,7},{0x65,7},{0x66,7},{0x67,7},{0x68,7},{0x69,7},{0x6a,7},
-    {0x6b,7},{0x6c,7},{0x6d,7},{0x6e,7},{0x6f,7},{0x70,7},{0x71,7},{0x72,7},
-    {0xfc,8},{0x73,7},{0xfd,8},{0x1ffb,13},{0x7fff0,19},{0x1ffc,13},{0x3ffb,14},{0x22,6},
-    {0x7ffc,15},{0x3,5},{0x23,6},{0x4,5},{0x24,6},{0x5,5},{0x25,6},{0x26,6},
-    {0x27,6},{0x6,5},{0x74,7},{0x75,7},{0x28,6},{0x29,6},{0x2a,6},{0x7,5},
-    {0x2b,6},{0x76,7},{0x2c,6},{0x8,5},{0x9,5},{0x2d,6},{0x77,7},{0x78,7},
-    {0x79,7},{0x7a,7},{0x7b,7},{0x7fff1,19},{0xffffe6,24},{0x7fff2,19},{0xffffe7,24},{0xffffe8,24},
-    {0xffffe9,24},{0xffffea,24},{0xffffeb,24},{0xffffec,24},{0xffffed,24},{0xffffee,24},{0xffffef,24},{0xfffff0,24},
-    {0xfffff1,24},{0xfffff2,24},{0xfffff3,24},{0xfffff4,24},{0xfffff5,24},{0xfffff6,24},{0xfffff7,24},{0xfffff8,24},
-    {0xfffff9,24},{0xfffffa,24},{0xfffffb,24},{0xfffffc,24},{0xfffffd,24},{0xfffffe,24},{0xffffff,24},{0x3ffffef,26},
-    {0x3fffff0,26},{0x3fffff1,26},{0x3fffff2,26},{0x3fffff3,26},{0x3fffff4,26},{0x3fffff5,26},{0x3fffff6,26},{0x3fffff7,26},
-    {0x3fffff8,26},{0x3fffff9,26},{0x3fffffa,26},{0x3fffffb,26},{0x3fffffc,26},{0x3fffffd,26},{0x3fffffe,26},{0x3ffffff,26},
-    {0x3fffff,22},{0x3fffffe,26},{0x3ffffff0,26},{0x3ffffff1,26},{0x3ffffff2,26},{0x3ffffff3,26},{0x3ffffff4,26},{0x3ffffff5,26},
-    {0x3ffffff6,26},{0x3ffffff7,26},{0x3ffffff8,26},{0x3ffffff9,26},{0x3ffffffa,26},{0x3ffffffb,26},{0x3ffffffc,26},{0x3ffffffd,26},
-    {0x3ffffffe,30}, // EOS (256)
+    { 0x1ff8, 13 }, { 0x7fffd8, 23 }, { 0xfffffe2, 28 }, { 0xfffffe3, 28 }, { 0xfffffe4, 28 }, { 0xfffffe5, 28 }, { 0xfffffe6, 28 }, { 0xfffffe7, 28 }, { 0xfffffe8, 28 }, { 0xffffea, 24 }, { 0x3ffffffc, 30 }, { 0xfffffe9, 28 }, { 0xfffffea, 28 }, { 0x3ffffffd, 30 }, { 0xfffffeb, 28 }, { 0xfffffec, 28 }, { 0xfffffed, 28 }, { 0xfffffee, 28 }, { 0xfffffef, 28 }, { 0xffffff0, 28 }, { 0xffffff1, 28 }, { 0xffffff2, 28 }, { 0x3ffffffe, 30 }, { 0xffffff3, 28 }, { 0xffffff4, 28 }, { 0xffffff5, 28 }, { 0xffffff6, 28 }, { 0xffffff7, 28 }, { 0xffffff8, 28 }, { 0xffffff9, 28 }, { 0xffffffa, 28 }, { 0xffffffb, 28 }, { 0x14, 6 }, { 0x3f8, 10 }, { 0x3f9, 10 }, { 0x7fa, 11 }, { 0x1ff9, 13 }, { 0x15, 6 }, { 0xf8, 8 }, { 0x7fb, 11 }, { 0x7fc, 11 }, { 0x7fd, 11 }, { 0x7fe, 11 }, { 0x7ff, 11 }, { 0x55, 7 }, { 0x56, 7 }, { 0x57, 7 }, { 0x58, 7 }, { 0x0, 5 }, { 0x1, 5 }, { 0x2, 5 }, { 0x19, 6 }, { 0x1a, 6 }, { 0x1b, 6 }, { 0x1c, 6 }, { 0x1d, 6 }, { 0x1e, 6 }, { 0x1f, 6 }, { 0x5c, 7 }, { 0xfb, 8 }, { 0x7ffd, 15 }, { 0x59, 7 }, { 0x7ffe, 15 }, { 0x3fa, 10 }, { 0x1ffa, 13 }, { 0x21, 6 }, { 0x5d, 7 }, { 0x5e, 7 }, { 0x5f, 7 }, { 0x60, 7 }, { 0x61, 7 }, { 0x62, 7 }, { 0x63, 7 }, { 0x64, 7 }, { 0x65, 7 }, { 0x66, 7 }, { 0x67, 7 }, { 0x68, 7 }, { 0x69, 7 }, { 0x6a, 7 }, { 0x6b, 7 }, { 0x6c, 7 }, { 0x6d, 7 }, { 0x6e, 7 }, { 0x6f, 7 }, { 0x70, 7 }, { 0x71, 7 }, { 0x72, 7 }, { 0xfc, 8 }, { 0x73, 7 }, { 0xfd, 8 }, { 0x1ffb, 13 }, { 0x7fff0, 19 }, { 0x1ffc, 13 }, { 0x3ffb, 14 }, { 0x22, 6 }, { 0x7ffc, 15 }, { 0x3, 5 }, { 0x23, 6 }, { 0x4, 5 }, { 0x24, 6 }, { 0x5, 5 }, { 0x25, 6 }, { 0x26, 6 }, { 0x27, 6 }, { 0x6, 5 }, { 0x74, 7 }, { 0x75, 7 }, { 0x28, 6 }, { 0x29, 6 }, { 0x2a, 6 }, { 0x7, 5 }, { 0x2b, 6 }, { 0x76, 7 }, { 0x2c, 6 }, { 0x8, 5 }, { 0x9, 5 }, { 0x2d, 6 }, { 0x77, 7 }, { 0x78, 7 }, { 0x79, 7 }, { 0x7a, 7 }, { 0x7b, 7 }, { 0x7fff1, 19 }, { 0xffffe6, 24 }, { 0x7fff2, 19 }, { 0xffffe7, 24 }, { 0xffffe8, 24 }, { 0xffffe9, 24 }, { 0xffffea, 24 }, { 0xffffeb, 24 }, { 0xffffec, 24 }, { 0xffffed, 24 }, { 0xffffee, 24 }, { 0xffffef, 24 }, { 0xfffff0, 24 }, { 0xfffff1, 24 }, { 0xfffff2, 24 }, { 0xfffff3, 24 }, { 0xfffff4, 24 }, { 0xfffff5, 24 }, { 0xfffff6, 24 }, { 0xfffff7, 24 }, { 0xfffff8, 24 }, { 0xfffff9, 24 }, { 0xfffffa, 24 }, { 0xfffffb, 24 }, { 0xfffffc, 24 }, { 0xfffffd, 24 }, { 0xfffffe, 24 }, { 0xffffff, 24 }, { 0x3ffffef, 26 }, { 0x3fffff0, 26 }, { 0x3fffff1, 26 }, { 0x3fffff2, 26 }, { 0x3fffff3, 26 }, { 0x3fffff4, 26 }, { 0x3fffff5, 26 }, { 0x3fffff6, 26 }, { 0x3fffff7, 26 }, { 0x3fffff8, 26 }, { 0x3fffff9, 26 }, { 0x3fffffa, 26 }, { 0x3fffffb, 26 }, { 0x3fffffc, 26 }, { 0x3fffffd, 26 }, { 0x3fffffe, 26 }, { 0x3ffffff, 26 }, { 0x3fffff, 22 }, { 0x3fffffe, 26 }, { 0x3ffffff0, 26 }, { 0x3ffffff1, 26 }, { 0x3ffffff2, 26 }, { 0x3ffffff3, 26 }, { 0x3ffffff4, 26 }, { 0x3ffffff5, 26 }, { 0x3ffffff6, 26 }, { 0x3ffffff7, 26 }, { 0x3ffffff8, 26 }, { 0x3ffffff9, 26 }, { 0x3ffffffa, 26 }, { 0x3ffffffb, 26 }, { 0x3ffffffc, 26 }, { 0x3ffffffd, 26 }, { 0x3ffffffe, 30 }, // EOS (256)
 };
 
 static std::string huffmanDecode(const uint8_t * data, size_t len)
 {
     // Build a simple decode: accumulate bits, match against table
     uint64_t bits = 0;
-    int      bitsLeft = 0;
+    int bitsLeft = 0;
     std::string result;
     result.reserve(len);
 
@@ -99,7 +76,10 @@ static std::string huffmanDecode(const uint8_t * data, size_t len)
 
 // ── HpackDecoder ──────────────────────────────────────────────────────────────
 
-HpackDecoder::HpackDecoder(size_t maxTableSize) : table_(maxTableSize) {}
+HpackDecoder::HpackDecoder(size_t maxTableSize)
+    : table_(maxTableSize)
+{
+}
 
 uint64_t HpackDecoder::decodeInt(const uint8_t * data, size_t len, size_t & pos, uint8_t prefixBits)
 {
@@ -138,11 +118,16 @@ std::string HpackDecoder::decodeStr(const uint8_t * data, size_t len, size_t & p
 
 void HpackDecoder::applyHeader(DecodedHeaders & out, std::string name, std::string value)
 {
-    if (name == ":method")        out.method    = std::move(value);
-    else if (name == ":path")     out.path      = std::move(value);
-    else if (name == ":scheme")   out.scheme    = std::move(value);
-    else if (name == ":authority") out.authority = std::move(value);
-    else if (name == ":status")   out.status    = std::move(value);
+    if (name == ":method")
+        out.method = std::move(value);
+    else if (name == ":path")
+        out.path = std::move(value);
+    else if (name == ":scheme")
+        out.scheme = std::move(value);
+    else if (name == ":authority")
+        out.authority = std::move(value);
+    else if (name == ":status")
+        out.status = std::move(value);
     else
     {
         http::HttpHeader hdr(name, value);
@@ -206,10 +191,13 @@ DecodedHeaders HpackDecoder::decode(const uint8_t * data, size_t len)
 
 // ── HpackEncoder ──────────────────────────────────────────────────────────────
 
-HpackEncoder::HpackEncoder(size_t maxTableSize) : table_(maxTableSize) {}
+HpackEncoder::HpackEncoder(size_t maxTableSize)
+    : table_(maxTableSize)
+{
+}
 
 void HpackEncoder::encodeInt(std::vector<uint8_t> & out, uint64_t value,
-                              uint8_t prefixBits, uint8_t firstByte)
+                             uint8_t prefixBits, uint8_t firstByte)
 {
     uint64_t maxVal = (1u << prefixBits) - 1;
     if (value < maxVal)
@@ -234,14 +222,14 @@ void HpackEncoder::encodeStr(std::vector<uint8_t> & out, std::string_view s)
     out.insert(out.end(), s.begin(), s.end());
 }
 
-std::vector<uint8_t> HpackEncoder::encodeResponse(http::StatusCode status,
-                                                    const http::HttpHeaderMap & headers)
+std::vector<uint8_t> HpackEncoder::encodeResponse(uint16_t statusCode,
+                                                  const http::HttpHeaderMap & headers)
 {
     std::vector<uint8_t> out;
     out.reserve(128);
 
     // :status - try indexed first
-    std::string statusStr = std::to_string(static_cast<int>(status));
+    std::string statusStr = std::to_string(statusCode);
     int idx = table_.find(":status", statusStr);
     if (idx > 0)
     {

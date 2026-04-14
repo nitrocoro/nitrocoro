@@ -15,7 +15,7 @@ Http2Server::Http2Server(uint16_t port, Scheduler * scheduler)
 }
 
 Http2Server::Http2Server(uint16_t port, std::shared_ptr<http::HttpRouter> router,
-                          Scheduler * scheduler)
+                         Scheduler * scheduler)
     : port_(port), scheduler_(scheduler), router_(std::move(router))
 {
     server_ = std::make_unique<net::TcpServer>(port_, scheduler_);

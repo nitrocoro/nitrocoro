@@ -48,7 +48,7 @@ public:
     explicit HpackEncoder(size_t maxTableSize = HpackTable::kDefaultMaxSize);
 
     // Encode response headers. Uses literal without indexing for simplicity.
-    std::vector<uint8_t> encodeResponse(http::StatusCode status,
+    std::vector<uint8_t> encodeResponse(uint16_t statusCode,
                                         const http::HttpHeaderMap & headers);
 
 private:

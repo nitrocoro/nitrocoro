@@ -28,7 +28,7 @@ public:
     Task<> run();
 
     // Called by Http2WriteProxy / dispatchStream
-    Task<> sendHeaders(uint32_t streamId, http::StatusCode status,
+    Task<> sendHeaders(uint32_t streamId, uint16_t statusCode,
                        const http::HttpHeaderMap & headers, bool endStream);
     Task<> sendData(uint32_t streamId, std::string_view data, bool endStream);
     Task<> sendRstStream(uint32_t streamId, uint32_t errorCode);
@@ -49,22 +49,22 @@ private:
     http::HttpRequest buildRequest(const hpack::DecodedHeaders & dh,
                                    const std::string & body);
 
-    FrameReader         reader_;
+    FrameReader reader_;
     hpack::HpackDecoder decoder_;
     hpack::HpackEncoder encoder_;
-    Mutex               writeMutex_;
+    Mutex writeMutex_;
 
     std::shared_ptr<http::HttpRouter> router_;
     Scheduler * scheduler_;
 
     std::unordered_map<uint32_t, std::shared_ptr<Http2Stream>> streams_;
 
-    uint32_t             continuationStreamId_{ 0 };
-    bool                 pendingEndStream_{ false };
+    uint32_t continuationStreamId_{ 0 };
+    bool pendingEndStream_{ false };
     std::vector<uint8_t> headerBlockBuf_;
 
     uint32_t lastStreamId_{ 0 };
-    bool     goAwaySent_{ false };
+    bool goAwaySent_{ false };
 };
 
 } // namespace nitrocoro::http2

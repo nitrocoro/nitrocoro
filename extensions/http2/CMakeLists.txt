@@ -2,6 +2,7 @@ add_library(nitrocoro-http2 STATIC
     src/frame/FrameReader.cc
     src/hpack/HpackTable.cc
     src/hpack/Hpack.cc
+    src/Http2ResponseSink.cc
     src/Http2Session.cc
     src/Http2Server.cc
 )
