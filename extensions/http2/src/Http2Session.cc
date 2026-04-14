@@ -3,6 +3,7 @@
  */
 #include "Http2Session.h"
 
+#include "Http2BodyReader.h"
 #include "Http2ResponseSink.h"
 
 #include <nitrocoro/http/HttpHeader.h>
@@ -13,38 +14,9 @@
 
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
 
 namespace nitrocoro::http2
 {
-
-// ── StringBodyReader: BodyReader backed by a pre-buffered string ──────────────
-
-class StringBodyReader : public http::BodyReader
-{
-public:
-    explicit StringBodyReader(std::string body)
-        : body_(std::move(body)) {}
-    bool isComplete() const override { return pos_ >= body_.size(); }
-
-    Task<size_t> read(char * buf, size_t len) override
-    {
-        size_t n = std::min(len, body_.size() - pos_);
-        std::memcpy(buf, body_.data() + pos_, n);
-        pos_ += n;
-        co_return n;
-    }
-
-    Task<> drain() override
-    {
-        pos_ = body_.size();
-        co_return;
-    }
-
-private:
-    std::string body_;
-    size_t pos_{ 0 };
-};
 
 // ── Http2Session ──────────────────────────────────────────────────────────────
 
@@ -166,7 +138,7 @@ Task<> Http2Session::handleHeaders(const Frame & frame)
     size_t blockLen = payLen - offset - padLen;
     headerBlockBuf_.assign(payload + offset, payload + offset + blockLen);
     continuationStreamId_ = sid;
-    pendingEndStream_ = (frame.header.flags & FrameFlags::EndStream) != 0;
+    headersOnly_ = (frame.header.flags & FrameFlags::EndStream) != 0;
 
     if (frame.header.flags & FrameFlags::EndHeaders)
         co_await finaliseHeaders();
@@ -211,14 +183,12 @@ Task<> Http2Session::finaliseHeaders()
     auto stream = std::make_shared<Http2Stream>(sid, scheduler_);
     stream->decodedHeaders = std::move(dh);
     stream->headersComplete = true;
-    stream->endStream = pendingEndStream_;
     streams_[sid] = stream;
 
-    if (pendingEndStream_)
-    {
-        stream->requestReady.set_value();
-        dispatchStream(stream);
-    }
+    if (headersOnly_)
+        stream->bodySender.reset(); // EOF immediately for headers-only requests
+
+    dispatchStream(stream);
 }
 
 Task<> Http2Session::handleData(const Frame & frame)
@@ -241,11 +211,11 @@ Task<> Http2Session::handleData(const Frame & frame)
         padLen = payload[offset++];
 
     size_t dataLen = payLen - offset - padLen;
-    stream->body.append(reinterpret_cast<const char *>(payload + offset), dataLen);
-
-    // Send WINDOW_UPDATE to keep windows open
     if (dataLen > 0)
     {
+        stream->bodySender->send(
+            std::string(reinterpret_cast<const char *>(payload + offset), dataLen));
+
         uint8_t wu[4];
         uint32_t inc = static_cast<uint32_t>(dataLen);
         wu[0] = (inc >> 24) & 0x7f;
@@ -258,11 +228,7 @@ Task<> Http2Session::handleData(const Frame & frame)
     }
 
     if (frame.header.flags & FrameFlags::EndStream)
-    {
-        stream->endStream = true;
-        stream->requestReady.set_value();
-        dispatchStream(stream);
-    }
+        stream->bodySender.reset(); // RAII close
 }
 
 Task<> Http2Session::handleSettings(const Frame & frame)
@@ -290,10 +256,10 @@ void Http2Session::dispatchStream(std::shared_ptr<Http2Stream> h2stream)
     scheduler_->spawn([self, h2stream]() -> Task<> {
         uint32_t sid = h2stream->streamId;
 
-        http::HttpRequest req = self->buildRequest(h2stream->decodedHeaders, h2stream->body);
+        http::HttpRequest req = self->buildRequest(h2stream->decodedHeaders);
         auto result = self->router_->route(req.method, req.path);
 
-        auto bodyReader = std::make_shared<StringBodyReader>(h2stream->body);
+        auto bodyReader = std::make_shared<Http2BodyReader>(std::move(h2stream->bodyReceiver));
         auto request = std::make_shared<http::IncomingRequest>(std::move(req), bodyReader);
         request->pathParams() = std::move(result.params);
 
@@ -330,8 +296,7 @@ void Http2Session::dispatchStream(std::shared_ptr<Http2Stream> h2stream)
     });
 }
 
-http::HttpRequest Http2Session::buildRequest(const hpack::DecodedHeaders & dh,
-                                             const std::string & body)
+http::HttpRequest Http2Session::buildRequest(const hpack::DecodedHeaders & dh)
 {
     http::HttpRequest req;
     req.version = http::Version::kHttp11;
@@ -370,7 +335,7 @@ http::HttpRequest Http2Session::buildRequest(const hpack::DecodedHeaders & dh,
     req.headers.insert(dh.headers.begin(), dh.headers.end());
 
     req.transferMode = http::TransferMode::ContentLength;
-    req.contentLength = body.size();
+    req.contentLength = 0;
     req.keepAlive = false;
     return req;
 }

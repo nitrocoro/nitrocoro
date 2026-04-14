@@ -274,6 +274,32 @@ static std::vector<uint8_t> makePostFrame(uint32_t streamId,
     return buf;
 }
 
+static std::vector<uint8_t> makePostHeaders(uint32_t streamId,
+                                            std::string_view path,
+                                            std::string_view authority)
+{
+    std::vector<uint8_t> headerBlock;
+    headerBlock.push_back(0x83);
+    hpackLiteral(headerBlock, ":path", path);
+    headerBlock.push_back(0x86);
+    hpackLiteral(headerBlock, ":authority", authority);
+
+    std::vector<uint8_t> buf;
+    writeFrameRaw(buf, 0x1, 0x4 /*END_HEADERS*/, streamId,
+                  headerBlock.data(), headerBlock.size());
+    return buf;
+}
+
+static std::vector<uint8_t> makeDataFrame(uint32_t streamId,
+                                          std::string_view data,
+                                          bool endStream)
+{
+    std::vector<uint8_t> buf;
+    writeFrameRaw(buf, 0x0, endStream ? 0x1 : 0x0, streamId,
+                  data.data(), data.size());
+    return buf;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 NITRO_TEST(h2_get_hello)
@@ -474,6 +500,45 @@ NITRO_TEST(h2_interleaved_frames)
 
     NITRO_CHECK_EQ(r1.body, "AAAAA");
     NITRO_CHECK_EQ(r3.body, "BBBBB");
+
+    co_await server.stop();
+}
+
+// Two POST streams send DATA frames in interleaved order.
+// Each handler reads its body chunk by chunk; verifies correct demuxing.
+NITRO_TEST(h2_post_streaming_interleaved)
+{
+    Http2Server server(0);
+    server.route("/echo", { "POST" }, [](http::IncomingRequestPtr req, http::ServerResponsePtr resp) -> Task<> {
+        char buf[64];
+        std::string result;
+        size_t n;
+        while ((n = co_await req->read(buf, sizeof(buf))) > 0)
+            result.append(buf, n);
+        resp->setBody(result);
+    });
+    co_await startServer(server);
+
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+
+    // Open both streams without END_STREAM
+    co_await client->send(makePostHeaders(1, "/echo", host));
+    co_await client->send(makePostHeaders(3, "/echo", host));
+
+    // Interleave DATA frames across the two streams
+    co_await client->send(makeDataFrame(1, "foo", false));
+    co_await client->send(makeDataFrame(3, "bar", false));
+    co_await client->send(makeDataFrame(1, "baz", false));
+    co_await client->send(makeDataFrame(3, "qux", false));
+    co_await client->send(makeDataFrame(1, "!", true));
+    co_await client->send(makeDataFrame(3, "!", true));
+
+    auto r1 = co_await client->recv(1);
+    auto r3 = co_await client->recv(3);
+
+    NITRO_CHECK_EQ(r1.body, "foobaz!");
+    NITRO_CHECK_EQ(r3.body, "barqux!");
 
     co_await server.stop();
 }

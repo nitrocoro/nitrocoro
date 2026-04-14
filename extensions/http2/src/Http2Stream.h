@@ -5,11 +5,9 @@
 #pragma once
 
 #include "hpack/Hpack.h"
-#include <nitrocoro/core/Future.h>
+#include <nitrocoro/core/Pipe.h>
 #include <nitrocoro/core/Task.h>
 #include <nitrocoro/http/HttpMessage.h>
-
-#include <string>
 
 namespace nitrocoro::http2
 {
@@ -24,16 +22,16 @@ struct Http2Stream
     hpack::DecodedHeaders decodedHeaders;
     bool headersComplete{ false };
 
-    // Filled by DATA frames
-    std::string body;
-    bool endStream{ false };
-
-    // Signalled when END_STREAM is received (headers-only or after DATA)
-    Promise<> requestReady;
+    // Data frames are pushed here; closed on END_STREAM
+    std::shared_ptr<PipeSender<std::string>> bodySender;
+    std::unique_ptr<PipeReceiver<std::string>> bodyReceiver;
 
     explicit Http2Stream(uint32_t id, Scheduler * sched)
-        : streamId(id), requestReady(sched)
+        : streamId(id)
     {
+        auto [tx, rx] = makePipe<std::string>(sched);
+        bodySender = std::move(tx);
+        bodyReceiver = std::move(rx);
     }
 };
 

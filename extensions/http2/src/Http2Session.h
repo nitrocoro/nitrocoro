@@ -44,8 +44,7 @@ private:
     Task<> sendGoAway(uint32_t lastStreamId, uint32_t errorCode);
     Task<> sendSettingsAck();
 
-    http::HttpRequest buildRequest(const hpack::DecodedHeaders & dh,
-                                   const std::string & body);
+    http::HttpRequest buildRequest(const hpack::DecodedHeaders & dh);
 
     FrameReader reader_;
     hpack::HpackDecoder decoder_;
@@ -58,7 +57,7 @@ private:
     std::unordered_map<uint32_t, std::shared_ptr<Http2Stream>> streams_;
 
     uint32_t continuationStreamId_{ 0 };
-    bool pendingEndStream_{ false };
+    bool headersOnly_{ false };
     std::vector<uint8_t> headerBlockBuf_;
 
     uint32_t lastStreamId_{ 0 };
