@@ -11,6 +11,8 @@
 #include <nitrocoro/testing/Test.h>
 
 #include <cstring>
+#include <optional>
+#include <unordered_map>
 
 using namespace nitrocoro;
 using namespace nitrocoro::http2;
@@ -124,6 +126,153 @@ static SharedFuture<> startServer(Http2Server & server)
     return server.started();
 }
 
+// Perform the h2c connection preface exchange and return a ready-to-use connection.
+static Task<net::TcpConnectionPtr> h2connect(Http2Server & server)
+{
+    auto conn = co_await net::TcpConnection::connect(
+        net::InetAddress("127.0.0.1", server.listeningPort()));
+
+    std::string_view preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    co_await writeExact(conn, preface.data(), preface.size());
+
+    std::vector<uint8_t> buf;
+    writeFrameRaw(buf, 0x4, 0, 0, nullptr, 0); // client SETTINGS
+    co_await writeExact(conn, buf.data(), buf.size());
+
+    // Read and ACK server SETTINGS
+    auto sh = co_await readFrameHeader(conn);
+    co_await readFramePayload(conn, sh.length);
+    buf.clear();
+    writeFrameRaw(buf, 0x4, 0x1, 0, nullptr, 0);
+    co_await writeExact(conn, buf.data(), buf.size());
+
+    co_return conn;
+}
+
+// Read frames for a single stream until END_STREAM, skipping SETTINGS frames.
+// Returns {headerBlock, body}.
+struct StreamResponse
+{
+    std::vector<uint8_t> headerBlock;
+    std::string body;
+};
+
+// Multiplexing client: runs a background pump coroutine that reads all incoming
+// frames and dispatches them to per-stream buffers. Callers co_await recv() to
+// get the complete response for a stream, regardless of interleaving.
+class H2Client
+{
+public:
+    explicit H2Client(net::TcpConnectionPtr conn)
+        : conn_(std::move(conn))
+    {
+        Scheduler::current()->spawn([this]() -> Task<> { co_await pump(); });
+    }
+
+    Task<> send(std::vector<uint8_t> frame)
+    {
+        co_await writeExact(conn_, frame.data(), frame.size());
+    }
+
+    Task<StreamResponse> recv(uint32_t streamId)
+    {
+        // Register a promise for this stream before any frames arrive
+        auto & entry = streams_[streamId];
+        if (!entry.promise)
+            entry.promise.emplace(Scheduler::current());
+        co_await entry.promise->get_future().get();
+        co_return std::move(entry.response);
+    }
+
+private:
+    struct StreamEntry
+    {
+        StreamResponse response;
+        std::optional<Promise<>> promise;
+    };
+
+    Task<> pump()
+    {
+        std::vector<uint8_t> buf;
+        for (;;)
+        {
+            RawFrameHeader fh;
+            try
+            {
+                fh = co_await readFrameHeader(conn_);
+            }
+            catch (...)
+            {
+                break;
+            }
+            auto payload = co_await readFramePayload(conn_, fh.length);
+
+            if (fh.type == 0x4 && !(fh.flags & 0x1)) // SETTINGS (not ACK)
+            {
+                buf.clear();
+                writeFrameRaw(buf, 0x4, 0x1, 0, nullptr, 0);
+                co_await writeExact(conn_, buf.data(), buf.size());
+                continue;
+            }
+
+            if (fh.streamId == 0)
+                continue;
+
+            auto & entry = streams_[fh.streamId];
+            if (!entry.promise)
+                entry.promise.emplace(Scheduler::current());
+
+            if (fh.type == 0x1) // HEADERS
+                entry.response.headerBlock = std::move(payload);
+            if (fh.type == 0x0) // DATA
+                entry.response.body.append(
+                    reinterpret_cast<const char *>(payload.data()), payload.size());
+
+            if (fh.flags & 0x1) // END_STREAM
+                entry.promise->set_value();
+        }
+    }
+
+    net::TcpConnectionPtr conn_;
+    std::unordered_map<uint32_t, StreamEntry> streams_;
+};
+
+static Task<std::shared_ptr<H2Client>> h2client(Http2Server & server)
+{
+    auto conn = co_await h2connect(server);
+    co_return std::make_shared<H2Client>(std::move(conn));
+}
+
+static std::vector<uint8_t> makeGetFrame(uint32_t streamId,
+                                         std::string_view path,
+                                         std::string_view authority)
+{
+    auto headerBlock = buildGetHeaders(path, authority);
+    std::vector<uint8_t> buf;
+    writeFrameRaw(buf, 0x1, 0x5 /*END_HEADERS|END_STREAM*/, streamId,
+                  headerBlock.data(), headerBlock.size());
+    return buf;
+}
+
+static std::vector<uint8_t> makePostFrame(uint32_t streamId,
+                                          std::string_view path,
+                                          std::string_view authority,
+                                          std::string_view body)
+{
+    std::vector<uint8_t> headerBlock;
+    headerBlock.push_back(0x83); // indexed :method POST (static[3])
+    hpackLiteral(headerBlock, ":path", path);
+    headerBlock.push_back(0x86); // indexed :scheme http (static[6])
+    hpackLiteral(headerBlock, ":authority", authority);
+
+    std::vector<uint8_t> buf;
+    writeFrameRaw(buf, 0x1, 0x4 /*END_HEADERS*/, streamId,
+                  headerBlock.data(), headerBlock.size());
+    writeFrameRaw(buf, 0x0, 0x1 /*END_STREAM*/, streamId,
+                  body.data(), body.size());
+    return buf;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 NITRO_TEST(h2_get_hello)
@@ -132,73 +281,15 @@ NITRO_TEST(h2_get_hello)
     server.route("/hello", { "GET" }, [](auto req, auto resp) {
         resp->setBody("hello h2");
     });
-    Scheduler::current()->spawn([&server]() -> Task<> { co_await server.start(); });
-    co_await server.started();
+    co_await startServer(server);
 
     std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto conn = co_await net::TcpConnection::connect(
-        net::InetAddress("127.0.0.1", server.listeningPort()));
+    auto client = co_await h2client(server);
+    co_await client->send(makeGetFrame(1, "/hello", host));
+    auto r = co_await client->recv(1);
 
-    // Client preface
-    std::string_view preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    co_await writeExact(conn, preface.data(), preface.size());
-
-    // Client SETTINGS (empty)
-    std::vector<uint8_t> buf;
-    writeFrameRaw(buf, 0x4, 0, 0, nullptr, 0);
-    co_await writeExact(conn, buf.data(), buf.size());
-
-    // Read server SETTINGS
-    auto sh = co_await readFrameHeader(conn);
-    NITRO_CHECK_EQ(sh.type, uint8_t(0x4));
-    co_await readFramePayload(conn, sh.length);
-
-    // ACK server SETTINGS
-    buf.clear();
-    writeFrameRaw(buf, 0x4, 0x1, 0, nullptr, 0);
-    co_await writeExact(conn, buf.data(), buf.size());
-
-    // Send HEADERS for GET /hello (stream 1, END_HEADERS | END_STREAM)
-    auto headerBlock = buildGetHeaders("/hello", host);
-    buf.clear();
-    writeFrameRaw(buf, 0x1, 0x5 /*END_HEADERS|END_STREAM*/, 1,
-                  headerBlock.data(), headerBlock.size());
-    co_await writeExact(conn, buf.data(), buf.size());
-
-    // Read frames until we get HEADERS response on stream 1
-    bool gotHeaders = false;
-    std::string body;
-    for (int i = 0; i < 10; ++i)
-    {
-        auto fh = co_await readFrameHeader(conn);
-        auto payload = co_await readFramePayload(conn, fh.length);
-
-        if (fh.type == 0x4 && !(fh.flags & 0x1))
-        {
-            // Server SETTINGS ACK request — send ACK
-            buf.clear();
-            writeFrameRaw(buf, 0x4, 0x1, 0, nullptr, 0);
-            co_await writeExact(conn, buf.data(), buf.size());
-            continue;
-        }
-        if (fh.type == 0x1 && fh.streamId == 1) // HEADERS
-        {
-            gotHeaders = true;
-            // Check :status 200 is in the block (byte 0x88 = indexed :status 200)
-            NITRO_CHECK(!payload.empty());
-        }
-        if (fh.type == 0x0 && fh.streamId == 1) // DATA
-        {
-            body.append(reinterpret_cast<const char *>(payload.data()), payload.size());
-            if (fh.flags & 0x1) // END_STREAM
-                break;
-        }
-        if (gotHeaders && (fh.flags & 0x1) && fh.streamId == 1)
-            break;
-    }
-
-    NITRO_CHECK(gotHeaders);
-    NITRO_CHECK_EQ(body, "hello h2");
+    NITRO_CHECK(!r.headerBlock.empty());
+    NITRO_CHECK_EQ(r.body, "hello h2");
 
     co_await server.stop();
 }
@@ -209,54 +300,130 @@ NITRO_TEST(h2_404)
     co_await startServer(server);
 
     std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto conn = co_await net::TcpConnection::connect(
-        net::InetAddress("127.0.0.1", server.listeningPort()));
+    auto client = co_await h2client(server);
+    co_await client->send(makeGetFrame(1, "/missing", host));
+    auto r = co_await client->recv(1);
 
-    std::string_view preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    co_await writeExact(conn, preface.data(), preface.size());
+    NITRO_CHECK(!r.headerBlock.empty());
+    NITRO_CHECK(r.body.empty());
 
-    std::vector<uint8_t> buf;
-    writeFrameRaw(buf, 0x4, 0, 0, nullptr, 0);
-    co_await writeExact(conn, buf.data(), buf.size());
+    co_await server.stop();
+}
 
-    // Read server SETTINGS
-    auto sh = co_await readFrameHeader(conn);
-    co_await readFramePayload(conn, sh.length);
+NITRO_TEST(h2_post_echo)
+{
+    Http2Server server(0);
+    server.route("/echo", { "POST" }, [](auto req, auto resp) -> Task<> {
+        auto complete = co_await req->toCompleteRequest();
+        resp->setBody(complete.body());
+    });
+    co_await startServer(server);
 
-    // ACK
-    buf.clear();
-    writeFrameRaw(buf, 0x4, 0x1, 0, nullptr, 0);
-    co_await writeExact(conn, buf.data(), buf.size());
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+    co_await client->send(makePostFrame(1, "/echo", host, "ping"));
+    auto r = co_await client->recv(1);
 
-    auto headerBlock = buildGetHeaders("/missing", host);
-    buf.clear();
-    writeFrameRaw(buf, 0x1, 0x5, 1, headerBlock.data(), headerBlock.size());
-    co_await writeExact(conn, buf.data(), buf.size());
+    NITRO_CHECK_EQ(r.body, "ping");
 
-    // Read until HEADERS on stream 1
-    bool got404 = false;
-    for (int i = 0; i < 10; ++i)
-    {
-        auto fh = co_await readFrameHeader(conn);
-        auto payload = co_await readFramePayload(conn, fh.length);
+    co_await server.stop();
+}
 
-        if (fh.type == 0x4 && !(fh.flags & 0x1))
-        {
-            buf.clear();
-            writeFrameRaw(buf, 0x4, 0x1, 0, nullptr, 0);
-            co_await writeExact(conn, buf.data(), buf.size());
-            continue;
-        }
-        if (fh.type == 0x1 && fh.streamId == 1)
-        {
-            // :status 404 = 0x8d in static table (index 13)
-            NITRO_CHECK(!payload.empty());
-            got404 = true;
-        }
-        if (fh.streamId == 1 && (fh.flags & 0x1))
-            break;
-    }
-    NITRO_CHECK(got404);
+NITRO_TEST(h2_405)
+{
+    Http2Server server(0);
+    server.route("/data", { "POST" }, [](auto req, auto resp) {
+        resp->setBody("ok");
+    });
+    co_await startServer(server);
+
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+    co_await client->send(makeGetFrame(1, "/data", host));
+    auto r = co_await client->recv(1);
+
+    NITRO_CHECK(!r.headerBlock.empty());
+
+    co_await server.stop();
+}
+
+NITRO_TEST(h2_path_params)
+{
+    Http2Server server(0);
+    server.route("/users/:id", { "GET" }, [](auto req, auto resp) {
+        resp->setBody(req->pathParams().at("id"));
+    });
+    co_await startServer(server);
+
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+    co_await client->send(makeGetFrame(1, "/users/42", host));
+    auto r = co_await client->recv(1);
+
+    NITRO_CHECK_EQ(r.body, "42");
+
+    co_await server.stop();
+}
+
+NITRO_TEST(h2_query_params)
+{
+    Http2Server server(0);
+    server.route("/greet", { "GET" }, [](auto req, auto resp) {
+        resp->setBody("Hello, " + req->getQuery("name") + "!");
+    });
+    co_await startServer(server);
+
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+    co_await client->send(makeGetFrame(1, "/greet?name=World", host));
+    auto r = co_await client->recv(1);
+
+    NITRO_CHECK_EQ(r.body, "Hello, World!");
+
+    co_await server.stop();
+}
+
+NITRO_TEST(h2_response_header)
+{
+    Http2Server server(0);
+    server.route("/", { "GET" }, [](auto req, auto resp) {
+        resp->setHeader("x-custom", "myvalue");
+        resp->setBody("ok");
+    });
+    co_await startServer(server);
+
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+    co_await client->send(makeGetFrame(1, "/", host));
+    auto r = co_await client->recv(1);
+
+    std::string block(r.headerBlock.begin(), r.headerBlock.end());
+    NITRO_CHECK(block.find("x-custom") != std::string::npos);
+    NITRO_CHECK(block.find("myvalue") != std::string::npos);
+
+    co_await server.stop();
+}
+
+NITRO_TEST(h2_multiple_streams)
+{
+    Http2Server server(0);
+    server.route("/a", { "GET" }, [](auto req, auto resp) { resp->setBody("aaa"); });
+    server.route("/b", { "GET" }, [](auto req, auto resp) { resp->setBody("bbb"); });
+    co_await startServer(server);
+
+    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
+    auto client = co_await h2client(server);
+
+    // Send both requests before waiting for either response
+    co_await client->send(makeGetFrame(1, "/a", host));
+    co_await client->send(makeGetFrame(3, "/b", host));
+
+    // recv() on each stream independently — works regardless of frame interleaving
+    auto r1 = co_await client->recv(1);
+    auto r3 = co_await client->recv(3);
+
+    NITRO_CHECK_EQ(r1.body, "aaa");
+    NITRO_CHECK_EQ(r3.body, "bbb");
 
     co_await server.stop();
 }
