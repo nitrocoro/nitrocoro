@@ -15,7 +15,7 @@ target_include_directories(nitrocoro-http2
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(nitrocoro-http2 PUBLIC nitrocoro nitrocoro-http)
+target_link_libraries(nitrocoro-http2 PUBLIC nitrocoro nitrocoro-http nitrocoro-tls)
 
 include(GNUInstallDirs)
 

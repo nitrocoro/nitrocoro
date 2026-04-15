@@ -6,6 +6,7 @@
  * We send the client preface + SETTINGS, then a HEADERS frame, and
  * verify the server responds with a HEADERS frame containing :status.
  */
+#include <nitrocoro/http/HttpServer.h>
 #include <nitrocoro/http2/Http2Server.h>
 #include <nitrocoro/net/TcpConnection.h>
 #include <nitrocoro/testing/Test.h>
@@ -16,6 +17,7 @@
 #include <unordered_map>
 
 using namespace nitrocoro;
+using namespace nitrocoro::http;
 using namespace nitrocoro::http2;
 using namespace std::chrono_literals;
 
@@ -60,11 +62,13 @@ static Task<RawFrameHeader> readFrameHeader(net::TcpConnectionPtr conn)
 {
     uint8_t hdr[9];
     co_await readExact(conn, hdr, 9);
-    RawFrameHeader f;
-    f.length = (uint32_t(hdr[0]) << 16) | (uint32_t(hdr[1]) << 8) | hdr[2];
+    RawFrameHeader f{};
+    f.length = (static_cast<uint32_t>(hdr[0]) << 16)
+               | (static_cast<uint32_t>(hdr[1]) << 8) | hdr[2];
     f.type = hdr[3];
     f.flags = hdr[4];
-    f.streamId = ((uint32_t(hdr[5]) & 0x7f) << 24) | (uint32_t(hdr[6]) << 16) | (uint32_t(hdr[7]) << 8) | hdr[8];
+    f.streamId = ((static_cast<uint32_t>(hdr[5]) & 0x7f) << 24)
+                 | (static_cast<uint32_t>(hdr[6]) << 16) | (static_cast<uint32_t>(hdr[7]) << 8) | hdr[8];
     co_return f;
 }
 
@@ -121,17 +125,17 @@ static std::vector<uint8_t> buildGetHeaders(std::string_view path, std::string_v
     return block;
 }
 
-static SharedFuture<> startServer(Http2Server & server)
+static SharedFuture<> startServer(HttpServer & server)
 {
     Scheduler::current()->spawn([&server]() -> Task<> { co_await server.start(); });
     return server.started();
 }
 
 // Perform the h2c connection preface exchange and return a ready-to-use connection.
-static Task<net::TcpConnectionPtr> h2connect(Http2Server & server)
+static Task<net::TcpConnectionPtr> h2connect(uint16_t port)
 {
     auto conn = co_await net::TcpConnection::connect(
-        net::InetAddress("127.0.0.1", server.listeningPort()));
+        net::InetAddress("127.0.0.1", port));
 
     std::string_view preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     co_await writeExact(conn, preface.data(), preface.size());
@@ -197,7 +201,7 @@ private:
         std::vector<uint8_t> buf;
         for (;;)
         {
-            RawFrameHeader fh;
+            RawFrameHeader fh{};
             try
             {
                 fh = co_await readFrameHeader(conn_);
@@ -238,9 +242,9 @@ private:
     std::unordered_map<uint32_t, StreamEntry> streams_;
 };
 
-static Task<std::shared_ptr<H2Client>> h2client(Http2Server & server)
+static Task<std::shared_ptr<H2Client>> h2client(uint16_t port)
 {
-    auto conn = co_await h2connect(server);
+    auto conn = co_await h2connect(port);
     co_return std::make_shared<H2Client>(std::move(conn));
 }
 
@@ -304,14 +308,16 @@ static std::vector<uint8_t> makeDataFrame(uint32_t streamId,
 
 NITRO_TEST(h2_get_hello)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/hello", { "GET" }, [](auto req, auto resp) {
         resp->setBody("hello h2");
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makeGetFrame(1, "/hello", host));
     auto r = co_await client->recv(1);
 
@@ -323,11 +329,13 @@ NITRO_TEST(h2_get_hello)
 
 NITRO_TEST(h2_404)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makeGetFrame(1, "/missing", host));
     auto r = co_await client->recv(1);
 
@@ -339,15 +347,17 @@ NITRO_TEST(h2_404)
 
 NITRO_TEST(h2_post_echo)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/echo", { "POST" }, [](auto req, auto resp) -> Task<> {
         auto complete = co_await req->toCompleteRequest();
         resp->setBody(complete.body());
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makePostFrame(1, "/echo", host, "ping"));
     auto r = co_await client->recv(1);
 
@@ -358,14 +368,16 @@ NITRO_TEST(h2_post_echo)
 
 NITRO_TEST(h2_405)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/data", { "POST" }, [](auto req, auto resp) {
         resp->setBody("ok");
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makeGetFrame(1, "/data", host));
     auto r = co_await client->recv(1);
 
@@ -376,14 +388,16 @@ NITRO_TEST(h2_405)
 
 NITRO_TEST(h2_path_params)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/users/:id", { "GET" }, [](auto req, auto resp) {
         resp->setBody(req->pathParams().at("id"));
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makeGetFrame(1, "/users/42", host));
     auto r = co_await client->recv(1);
 
@@ -394,14 +408,16 @@ NITRO_TEST(h2_path_params)
 
 NITRO_TEST(h2_query_params)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/greet", { "GET" }, [](auto req, auto resp) {
         resp->setBody("Hello, " + req->getQuery("name") + "!");
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makeGetFrame(1, "/greet?name=World", host));
     auto r = co_await client->recv(1);
 
@@ -412,15 +428,17 @@ NITRO_TEST(h2_query_params)
 
 NITRO_TEST(h2_response_header)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/", { "GET" }, [](auto req, auto resp) {
         resp->setHeader("x-custom", "myvalue");
         resp->setBody("ok");
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
     co_await client->send(makeGetFrame(1, "/", host));
     auto r = co_await client->recv(1);
 
@@ -433,13 +451,15 @@ NITRO_TEST(h2_response_header)
 
 NITRO_TEST(h2_multiple_streams)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/a", { "GET" }, [](auto req, auto resp) { resp->setBody("aaa"); });
     server.route("/b", { "GET" }, [](auto req, auto resp) { resp->setBody("bbb"); });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
 
     // Send both requests before waiting for either response
     co_await client->send(makeGetFrame(1, "/a", host));
@@ -462,7 +482,8 @@ NITRO_TEST(h2_interleaved_frames)
 {
     auto counter = std::make_shared<std::atomic_int>(0);
 
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/s1", { "GET" }, [counter](auto req, auto resp) -> Task<> {
         resp->setBody([counter](http::BodyWriter & w) -> Task<> {
             for (int i = 0; i < 5; ++i)
@@ -489,8 +510,9 @@ NITRO_TEST(h2_interleaved_frames)
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
 
     co_await client->send(makeGetFrame(1, "/s1", host));
     co_await client->send(makeGetFrame(3, "/s3", host));
@@ -508,7 +530,8 @@ NITRO_TEST(h2_interleaved_frames)
 // Each handler reads its body chunk by chunk; verifies correct demuxing.
 NITRO_TEST(h2_post_streaming_interleaved)
 {
-    Http2Server server(0);
+    HttpServer server(0);
+    enableHttp2(server);
     server.route("/echo", { "POST" }, [](http::IncomingRequestPtr req, http::ServerResponsePtr resp) -> Task<> {
         char buf[64];
         std::string result;
@@ -519,8 +542,9 @@ NITRO_TEST(h2_post_streaming_interleaved)
     });
     co_await startServer(server);
 
-    std::string host = "127.0.0.1:" + std::to_string(server.listeningPort());
-    auto client = co_await h2client(server);
+    auto port = server.listeningPort();
+    std::string host = "127.0.0.1:" + std::to_string(port);
+    auto client = co_await h2client(port);
 
     // Open both streams without END_STREAM
     co_await client->send(makePostHeaders(1, "/echo", host));
