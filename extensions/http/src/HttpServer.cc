@@ -160,11 +160,11 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     if (std::holds_alternative<HttpParseError>(parsed))
     {
         NITRO_DEBUG("Bad request: %s", std::get<HttpParseError>(parsed).message.c_str());
-        auto response = std::make_shared<ServerResponse>(false, config_.send_date_header);
+        auto response = std::make_shared<ServerResponse>();
         response->setStatus(StatusCode::k400BadRequest);
         response->setCloseConnection(true);
         response->setBody("Bad Request");
-        co_return { Action::Close, std::move(response) };
+        co_return { Action::Close, nullptr, std::move(response) };
     }
 
     auto & parsedMsg = std::get<HttpRequest>(parsed);
@@ -176,8 +176,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     auto request = std::make_shared<IncomingRequest>(std::move(parsedMsg), bodyReader);
 
     auto method = request->method();
-    bool ignoreBody = (method == methods::Head);
-    auto response = std::make_shared<ServerResponse>(ignoreBody, config_.send_date_header);
+    auto response = std::make_shared<ServerResponse>();
     response->setVersion(request->version());
     response->setCloseConnection(!keepAlive);
 
@@ -185,7 +184,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
     {
         response->setStatus(StatusCode::k400BadRequest);
         response->setBody("Bad Request");
-        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
+        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(request), std::move(response), std::move(bodyReader) };
     }
 
     if (requestUpgrader_ && isUpgradeRequest(*request))
@@ -228,15 +227,15 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
             response->setCloseConnection(true);
             response->setStatus(StatusCode::k500InternalServerError);
             response->setBody("Internal Server Error");
-            co_return { Action::Shutdown, std::move(response), std::move(bodyReader) };
+            co_return { Action::Shutdown, std::move(request), std::move(response), std::move(bodyReader) };
         }
         if (handler)
         {
-            co_await response->flush(Http1ResponseSink(stream, config_.send_date_header));
+            co_await response->flush(Http1ResponseSink(stream, (method == methods::Head), config_.send_date_header));
             co_await handler(stream);
             co_return { Action::Close };
         }
-        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
+        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(request), std::move(response), std::move(bodyReader) };
     }
 
     auto routeRes = router_->route(method, request->path());
@@ -264,7 +263,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
             response->setBody("Not Found");
         }
 
-        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
+        co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(request), std::move(response), std::move(bodyReader) };
     }
 
     auto expect = request->getHeader(HttpHeader::NameCode::Expect);
@@ -274,7 +273,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         {
             response->setStatus(StatusCode::k417ExpectationFailed);
             response->setBody("Expectation Failed");
-            co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
+            co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(request), std::move(response), std::move(bodyReader) };
         }
         // TODO: custom handler
         co_await stream->write("HTTP/1.1 100 Continue\r\n\r\n", 25);
@@ -318,7 +317,7 @@ Task<HttpServer::HandleResult> HttpServer::handleNextRequest(
         response->setStatus(StatusCode::k500InternalServerError);
         response->setBody("Internal Server Error");
     }
-    co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(response), std::move(bodyReader) };
+    co_return { keepAlive ? Action::Continue : Action::Shutdown, std::move(request), std::move(response), std::move(bodyReader) };
 }
 
 Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
@@ -352,7 +351,8 @@ Task<> HttpServer::handleConnection(net::TcpConnectionPtr conn)
             break;
 
         // flush resp
-        co_await result.resp->flush(Http1ResponseSink(stream, config_.send_date_header));
+        bool isHeadMethod = (result.req && result.req->method() == methods::Head);
+        co_await result.resp->flush(Http1ResponseSink(stream, isHeadMethod, config_.send_date_header));
 
         if (result.action == Action::Continue)
         {

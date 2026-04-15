@@ -79,6 +79,7 @@ private:
         };
 
         Action action{ Action::Continue };
+        IncomingRequestPtr req;
         ServerResponsePtr resp;
         std::shared_ptr<BodyReader> bodyReader;
     };

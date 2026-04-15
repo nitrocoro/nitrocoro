@@ -14,19 +14,20 @@
 namespace nitrocoro::http
 {
 
-Http1ResponseSink::Http1ResponseSink(io::StreamPtr stream, bool sendDateHeader)
+Http1ResponseSink::Http1ResponseSink(io::StreamPtr stream, bool isHeadMethod, bool sendDateHeader)
     : stream_(std::move(stream))
+    , isHeadMethod_(isHeadMethod)
     , sendDateHeader_(sendDateHeader)
 {
 }
 
-Task<> Http1ResponseSink::write(const HttpResponse & resp, std::string_view body, bool ignoreBody)
+Task<> Http1ResponseSink::write(const HttpResponse & resp, std::string_view body)
 {
     std::string buf;
     buf.reserve(256 + resp.headers.size() * 64 + body.size());
     buildHeaderBuf(buf, resp, TransferMode::ContentLength, body.size());
     buf.append("\r\n");
-    if (!ignoreBody)
+    if (!isHeadMethod_)
         buf.append(body);
     co_await stream_->write(buf.data(), buf.size());
 }
@@ -44,6 +45,9 @@ Task<> Http1ResponseSink::write(const HttpResponse & resp, const BodyWriterFn & 
     buildHeaderBuf(buf, resp, mode, 0);
     buf.append("\r\n");
     co_await stream_->write(buf.data(), buf.size());
+
+    if (isHeadMethod_)
+        co_return;
 
     auto bodyWriter = Http1BodyWriter::create(mode, stream_);
     co_await bodyWriterFn(*bodyWriter);

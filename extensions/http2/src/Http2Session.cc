@@ -275,7 +275,7 @@ Task<> Http2Session::dispatchStream(std::shared_ptr<Http2Stream> h2stream)
     auto request = std::make_shared<http::IncomingRequest>(std::move(req), bodyReader);
     request->pathParams() = std::move(result.params);
 
-    Http2ResponseSink sink(weak_from_this(), sid);
+    Http2ResponseSink sink(weak_from_this(), sid, req.method == http::methods::Head);
     auto response = std::make_shared<http::ServerResponse>();
 
     if (!result.handler)

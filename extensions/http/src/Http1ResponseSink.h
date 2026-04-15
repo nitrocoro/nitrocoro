@@ -13,9 +13,10 @@ namespace nitrocoro::http
 class Http1ResponseSink : public ResponseSink
 {
 public:
-    explicit Http1ResponseSink(io::StreamPtr stream, bool sendDateHeader = true);
+    // TODO: take HttpServerConfig as argument
+    explicit Http1ResponseSink(io::StreamPtr stream, bool isHeadMethod = false, bool sendDateHeader = true);
 
-    Task<> write(const HttpResponse & resp, std::string_view body, bool ignoreBody) override;
+    Task<> write(const HttpResponse & resp, std::string_view body) override;
     Task<> write(const HttpResponse & resp, const BodyWriterFn & bodyWriterFn) override;
 
 private:
@@ -23,6 +24,7 @@ private:
                         TransferMode mode, size_t bodyLength) const;
 
     io::StreamPtr stream_;
+    bool isHeadMethod_;
     bool sendDateHeader_;
 };
 

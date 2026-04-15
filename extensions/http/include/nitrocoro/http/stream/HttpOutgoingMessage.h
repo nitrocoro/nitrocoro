@@ -28,13 +28,6 @@ class HttpOutgoingMessageBase
 public:
     HttpOutgoingMessageBase() = default;
 
-    explicit HttpOutgoingMessageBase(bool ignoreBody,
-                                     bool sendDateHeader = true)
-        : ignoreBody_(ignoreBody)
-        , sendDateHeader_(sendDateHeader)
-    {
-    }
-
     void setHeader(std::string_view name, std::string value);
     void setHeader(HttpHeader::NameCode code, std::string value);
     void setHeader(HttpHeader header);
@@ -47,9 +40,6 @@ protected:
     DataType data_;
     std::string body_;
     BodyWriterFn bodyWriterFn_;
-
-    bool ignoreBody_{ false };
-    bool sendDateHeader_{ true };
 };
 
 } // namespace detail
@@ -92,13 +82,6 @@ class HttpOutgoingMessage<HttpResponse>
 {
 public:
     HttpOutgoingMessage() = default;
-
-    explicit HttpOutgoingMessage(bool ignoreBody,
-                                 bool send_date_header = true)
-        : detail::HttpOutgoingMessageBase<HttpResponse>(ignoreBody,
-                                                        send_date_header)
-    {
-    }
 
     void setStatus(int code, const std::string & reason = "");
     void setStatus(StatusCode code, const std::string & reason = "");

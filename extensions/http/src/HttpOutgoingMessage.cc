@@ -116,7 +116,7 @@ Task<> HttpOutgoingMessage<HttpResponse>::flush(ResponseSink & sink) const
     }
     else
     {
-        co_await sink.write(data_, std::string_view(body_), ignoreBody_);
+        co_await sink.write(data_, std::string_view(body_));
     }
 }
 

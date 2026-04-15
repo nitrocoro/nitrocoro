@@ -16,7 +16,7 @@ class ResponseSink
 public:
     virtual ~ResponseSink() = default;
 
-    virtual Task<> write(const HttpResponse & resp, std::string_view body, bool ignoreBody) = 0;
+    virtual Task<> write(const HttpResponse & resp, std::string_view body) = 0;
     virtual Task<> write(const HttpResponse & resp, const BodyWriterFn & bodyWriterFn) = 0;
 };
 
