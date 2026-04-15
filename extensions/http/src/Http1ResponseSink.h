@@ -20,8 +20,7 @@ public:
     Task<> write(const HttpResponse & resp, const BodyWriterFn & bodyWriterFn) override;
 
 private:
-    void buildHeaderBuf(std::string & buf, const HttpResponse & resp,
-                        TransferMode mode, size_t bodyLength) const;
+    void buildHeaderBuf(std::string & buf, const HttpResponse & resp, TransferMode mode) const;
 
     io::StreamPtr stream_;
     bool isHeadMethod_;

@@ -41,6 +41,7 @@ Task<> Http2ResponseSink::write(const http::HttpResponse & resp, std::string_vie
     if (!s)
         co_return;
     bool endStream = isHeadMethod_ || body.empty();
+    assert(body.size() == resp.contentLength);
     co_await s->sendHeaders(streamId_, resp, endStream);
     if (!endStream)
         co_await s->sendData(streamId_, body, true);

@@ -245,6 +245,11 @@ std::vector<uint8_t> HpackEncoder::encodeResponse(const http::HttpResponse & res
 
     for (const auto & [key, hdr] : resp.headers)
     {
+        if (hdr.nameCode() == http::HttpHeader::NameCode::ContentLength
+            || hdr.nameCode() == http::HttpHeader::NameCode::TransferEncoding
+            || hdr.nameCode() == http::HttpHeader::NameCode::Connection)
+            continue;
+
         std::string_view lname = hdr.name(); // already lowercase in our impl
         std::string_view val = hdr.value();
 
@@ -262,6 +267,14 @@ std::vector<uint8_t> HpackEncoder::encodeResponse(const http::HttpResponse & res
             encodeStr(out, val);
             table_.insert(std::string(lname), std::string(val));
         }
+    }
+
+    if (resp.contentLength > 0)
+    {
+        std::string val = std::to_string(resp.contentLength);
+        encodeInt(out, 0, 6, 0x40);
+        encodeStr(out, "content-length");
+        encodeStr(out, val);
     }
 
     for (const auto & cookie : resp.cookies)

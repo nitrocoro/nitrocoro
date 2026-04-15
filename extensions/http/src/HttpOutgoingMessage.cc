@@ -40,6 +40,7 @@ template <typename DataType>
 void HttpOutgoingMessageBase<DataType>::setBody(std::string body)
 {
     body_ = std::move(body);
+    data_.contentLength = body_.size();
     bodyWriterFn_ = nullptr;
 }
 
@@ -47,12 +48,15 @@ template <typename DataType>
 void HttpOutgoingMessageBase<DataType>::setBody(const char * data, size_t len)
 {
     body_ = std::string(data, len);
+    data_.contentLength = len;
     bodyWriterFn_ = nullptr;
 }
 
 template <typename DataType>
 void HttpOutgoingMessageBase<DataType>::setBody(BodyWriterFn bodyWriterFn)
 {
+    body_.clear();
+    data_.contentLength = 0;
     bodyWriterFn_ = std::move(bodyWriterFn);
 }
 
@@ -105,6 +109,7 @@ void HttpOutgoingMessage<HttpResponse>::clear()
     data_.cookies.clear();
 
     body_.clear();
+    data_.contentLength = 0;
     bodyWriterFn_ = nullptr;
 }
 

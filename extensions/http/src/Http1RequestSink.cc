@@ -20,7 +20,7 @@ Task<> Http1RequestSink::write(const HttpRequest & req, std::string_view body)
 {
     std::string buf;
     buf.reserve(256 + req.headers.size() * 64 + body.size());
-    buildHeaderBuf(buf, req, TransferMode::ContentLength, body.size());
+    buildHeaderBuf(buf, req, TransferMode::ContentLength);
     buf.append("\r\n");
     buf.append(body);
     co_await stream_->write(buf.data(), buf.size());
@@ -32,7 +32,7 @@ Task<> Http1RequestSink::write(const HttpRequest & req, const BodyWriterFn & bod
 
     std::string buf;
     buf.reserve(256 + req.headers.size() * 64);
-    buildHeaderBuf(buf, req, mode, 0);
+    buildHeaderBuf(buf, req, mode);
     buf.append("\r\n");
     co_await stream_->write(buf.data(), buf.size());
 
@@ -41,8 +41,7 @@ Task<> Http1RequestSink::write(const HttpRequest & req, const BodyWriterFn & bod
     co_await bodyWriter->end();
 }
 
-void Http1RequestSink::buildHeaderBuf(std::string & buf, const HttpRequest & req,
-                                      TransferMode mode, size_t bodyLength) const
+void Http1RequestSink::buildHeaderBuf(std::string & buf, const HttpRequest & req, TransferMode mode) const
 {
     buf.append(req.method.toString())
         .append(" ")
@@ -53,16 +52,8 @@ void Http1RequestSink::buildHeaderBuf(std::string & buf, const HttpRequest & req
 
     for (const auto & [name, header] : req.headers)
     {
-        if (header.nameCode() == HttpHeader::NameCode::ContentLength)
-        {
-            if (mode == TransferMode::ContentLength)
-                buf.append(HttpHeader::Name::ContentLength_C)
-                    .append(": ")
-                    .append(std::to_string(bodyLength))
-                    .append("\r\n");
-            continue;
-        }
-        if (header.nameCode() == HttpHeader::NameCode::TransferEncoding)
+        if (header.nameCode() == HttpHeader::NameCode::ContentLength
+            || header.nameCode() == HttpHeader::NameCode::TransferEncoding)
             continue;
 
         if (header.nameCode() != HttpHeader::NameCode::Unknown)
@@ -72,8 +63,11 @@ void Http1RequestSink::buildHeaderBuf(std::string & buf, const HttpRequest & req
         buf.append(": ").append(header.value()).append("\r\n");
     }
 
-    if (mode == TransferMode::ContentLength && !req.headers.contains(HttpHeader::Name::ContentLength_L))
-        buf.append(HttpHeader::Name::ContentLength_C).append(": ").append(std::to_string(bodyLength)).append("\r\n");
+    if (mode == TransferMode::ContentLength)
+        buf.append(HttpHeader::Name::ContentLength_C)
+            .append(": ")
+            .append(std::to_string(req.contentLength))
+            .append("\r\n");
 
     if (mode == TransferMode::Chunked && !req.headers.contains(HttpHeader::Name::TransferEncoding_L))
         buf.append(HttpHeader::Name::TransferEncoding_C).append(": chunked\r\n");

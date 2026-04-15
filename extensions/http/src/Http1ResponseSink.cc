@@ -25,7 +25,7 @@ Task<> Http1ResponseSink::write(const HttpResponse & resp, std::string_view body
 {
     std::string buf;
     buf.reserve(256 + resp.headers.size() * 64 + body.size());
-    buildHeaderBuf(buf, resp, TransferMode::ContentLength, body.size());
+    buildHeaderBuf(buf, resp, TransferMode::ContentLength);
     buf.append("\r\n");
     if (!isHeadMethod_)
         buf.append(body);
@@ -42,7 +42,7 @@ Task<> Http1ResponseSink::write(const HttpResponse & resp, const BodyWriterFn & 
 
     std::string buf;
     buf.reserve(256 + resp.headers.size() * 64);
-    buildHeaderBuf(buf, resp, mode, 0);
+    buildHeaderBuf(buf, resp, mode);
     buf.append("\r\n");
     co_await stream_->write(buf.data(), buf.size());
 
@@ -54,8 +54,7 @@ Task<> Http1ResponseSink::write(const HttpResponse & resp, const BodyWriterFn & 
     co_await bodyWriter->end();
 }
 
-void Http1ResponseSink::buildHeaderBuf(std::string & buf, const HttpResponse & resp,
-                                       TransferMode mode, size_t bodyLength) const
+void Http1ResponseSink::buildHeaderBuf(std::string & buf, const HttpResponse & resp, TransferMode mode) const
 {
     buf.append(versionToString(resp.version))
         .append(" ")
@@ -68,17 +67,8 @@ void Http1ResponseSink::buildHeaderBuf(std::string & buf, const HttpResponse & r
 
     for (const auto & [name, header] : resp.headers)
     {
-        if (header.nameCode() == HttpHeader::NameCode::ContentLength)
-        {
-            if (mode == TransferMode::ContentLength)
-                buf.append(HttpHeader::Name::ContentLength_C)
-                    .append(": ")
-                    .append(std::to_string(bodyLength))
-                    .append("\r\n");
-            continue;
-        }
-        // Drop HTTP/1.1 connection-management headers that are auto-managed
-        if (header.nameCode() == HttpHeader::NameCode::TransferEncoding)
+        if (header.nameCode() == HttpHeader::NameCode::ContentLength
+            || header.nameCode() == HttpHeader::NameCode::TransferEncoding)
             continue;
 
         if (header.nameCode() != HttpHeader::NameCode::Unknown)
@@ -88,8 +78,11 @@ void Http1ResponseSink::buildHeaderBuf(std::string & buf, const HttpResponse & r
         buf.append(": ").append(header.value()).append("\r\n");
     }
 
-    if (mode == TransferMode::ContentLength && !resp.headers.contains(HttpHeader::Name::ContentLength_L))
-        buf.append(HttpHeader::Name::ContentLength_C).append(": ").append(std::to_string(bodyLength)).append("\r\n");
+    if (mode == TransferMode::ContentLength)
+        buf.append(HttpHeader::Name::ContentLength_C)
+            .append(": ")
+            .append(std::to_string(resp.contentLength))
+            .append("\r\n");
 
     if (mode == TransferMode::Chunked && !resp.headers.contains(HttpHeader::Name::TransferEncoding_L))
         buf.append(HttpHeader::Name::TransferEncoding_C).append(": chunked\r\n");
@@ -97,7 +90,7 @@ void Http1ResponseSink::buildHeaderBuf(std::string & buf, const HttpResponse & r
     for (const auto & cookie : resp.cookies)
         buf.append("Set-Cookie: ").append(cookie.toString()).append("\r\n");
 
-    if (sendDateHeader_ && resp.headers.find(HttpHeader::Name::Date_L) == resp.headers.end())
+    if (sendDateHeader_ && !resp.headers.contains(HttpHeader::Name::Date_L))
     {
         char dateBuf[32];
         std::time_t now = std::time(nullptr);
