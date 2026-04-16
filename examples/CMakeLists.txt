@@ -20,6 +20,14 @@ if(BUILD_EXT_WEBSOCKET)
     target_link_libraries(websocket_server PRIVATE nitrocoro-websocket)
 endif()
 
+if(BUILD_EXT_HTTP2)
+    add_executable(http2_server http2_server.cc)
+    target_link_libraries(http2_server PRIVATE nitrocoro-http2)
+
+    add_executable(http2_client http2_client.cc)
+    target_link_libraries(http2_client PRIVATE nitrocoro-http2)
+endif()
+
 if (BUILD_EXT_HTTPS)
     add_executable(https_client https_client.cc)
     target_link_libraries(https_client PRIVATE nitrocoro-https)
