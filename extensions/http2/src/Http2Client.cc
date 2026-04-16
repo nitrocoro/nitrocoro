@@ -27,6 +27,7 @@ Http2Client::Http2Client(net::Url url, Http2ClientConfig config)
     : baseUrl_(std::move(url))
     , config_(std::move(config))
     , isHttps_(baseUrl_.scheme() == "https")
+    , cookieStore_(config_.cookieStoreFactory ? config_.cookieStoreFactory() : nullptr)
 {
     if (baseUrl_.scheme() != "http" && baseUrl_.scheme() != "https")
         throw std::invalid_argument("Http2Client: unsupported scheme: " + baseUrl_.scheme());
@@ -80,7 +81,17 @@ Task<http::IncomingResponse> Http2Client::request(http::ClientRequest req)
         co_return co_await http1Fallback_->request(std::move(req));
     }
 
-    co_return co_await session->request(std::move(req));
+    {
+        [[maybe_unused]] auto lock = co_await cookieMutex_.scoped_lock();
+        injectCookies(req, req.data().path);
+    }
+    auto reqPath = req.data().path;
+    auto resp = co_await session->request(std::move(req));
+    {
+        [[maybe_unused]] auto lock = co_await cookieMutex_.scoped_lock();
+        collectCookies(reqPath, resp.cookies());
+    }
+    co_return resp;
 }
 
 Task<std::shared_ptr<Http2ClientSession>> Http2Client::getSession()
@@ -97,6 +108,7 @@ Task<std::shared_ptr<Http2ClientSession>> Http2Client::getSession()
         {
             http::HttpClientConfig http1Config;
             http1Config.add_host_header = config_.add_host_header;
+            http1Config.cookieStoreFactory = config_.cookieStoreFactory;
             http1Fallback_ = std::make_unique<http::HttpClient>(baseUrl_, http1Config);
             if (isHttps_)
             {
@@ -169,6 +181,25 @@ Task<ProtocolVersion> Http2Client::negotiateProtocol()
     }
     // h2c: assume HTTP/2 for now (no upgrade negotiation)
     co_return ProtocolVersion::Http2;
+}
+
+void Http2Client::injectCookies(http::ClientRequest & req, const std::string & path)
+{
+    if (!cookieStore_)
+        return;
+    for (auto & c : cookieStore_->load(path))
+    {
+        if (c.secure && !isHttps_)
+            continue;
+        req.setCookie(c.name, c.value);
+    }
+}
+
+void Http2Client::collectCookies(const std::string & path, const std::vector<http::Cookie> & cookies)
+{
+    if (!cookieStore_)
+        return;
+    cookieStore_->store(path, cookies);
 }
 
 // ── Free functions ────────────────────────────────────────────────────────────

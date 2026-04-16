@@ -7,6 +7,7 @@
 #include "Http2RequestSink.h"
 
 #include <nitrocoro/http/HttpHeader.h>
+#include <nitrocoro/http/Cookie.h>
 #include <nitrocoro/http/stream/HttpIncomingStream.h>
 #include <nitrocoro/utils/Debug.h>
 #include <nitrocoro/utils/UrlEncode.h>
@@ -324,6 +325,17 @@ Task<> Http2ClientSession::sendHeaders(uint32_t streamId, const http::HttpReques
             continue;
         encodeLiteral(hdr.name(), hdr.value());
     }
+    if (!req.cookies.empty())
+    {
+        std::string cookieHeader;
+        for (const auto & [name, value] : req.cookies)
+        {
+            if (!cookieHeader.empty())
+                cookieHeader += "; ";
+            cookieHeader += name + "=" + value;
+        }
+        encodeLiteral("cookie", cookieHeader);
+    }
 
     uint8_t flags = FrameFlags::EndHeaders | (endStream ? FrameFlags::EndStream : 0);
     auto lock = co_await writeMutex_.scoped_lock();
@@ -368,7 +380,6 @@ http::HttpResponse Http2ClientSession::buildResponse(const hpack::DecodedHeaders
     http::HttpResponse resp;
     resp.version = http::Version::kHttp11;
 
-    // Parse status from :status pseudo-header
     if (!dh.status.empty())
     {
         int statusCode = std::stoi(dh.status);
@@ -379,8 +390,13 @@ http::HttpResponse Http2ClientSession::buildResponse(const hpack::DecodedHeaders
         resp.statusCode = static_cast<uint16_t>(http::StatusCode::k200OK);
     }
 
-    // Copy regular headers
-    resp.headers = dh.headers;
+    for (auto & [key, hdr] : dh.headers)
+    {
+        if (hdr.name() == "set-cookie")
+            resp.cookies.push_back(http::Cookie::fromString(hdr.value()));
+        else
+            resp.headers.emplace(key, hdr);
+    }
 
     return resp;
 }

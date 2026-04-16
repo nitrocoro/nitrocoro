@@ -340,7 +340,40 @@ http::HttpRequest Http2Session::buildRequest(const hpack::DecodedHeaders & dh)
         http::HttpHeader h(http::HttpHeader::NameCode::Host, dh.authority);
         req.headers.insert_or_assign(h.name(), std::move(h));
     }
-    req.headers.insert(dh.headers.begin(), dh.headers.end());
+    for (auto & [key, hdr] : dh.headers)
+    {
+        if (hdr.nameCode() == http::HttpHeader::NameCode::Cookie)
+        {
+            std::string_view cookieStr = hdr.value();
+            size_t start = 0;
+            while (start < cookieStr.size())
+            {
+                size_t semi = cookieStr.find(';', start);
+                size_t end = (semi == std::string_view::npos) ? cookieStr.size() : semi;
+                std::string_view pair = cookieStr.substr(start, end - start);
+                size_t eq = pair.find('=');
+                if (eq != std::string_view::npos)
+                {
+                    auto trim = [](std::string_view s) {
+                        size_t l = s.find_first_not_of(' ');
+                        size_t r = s.find_last_not_of(' ');
+                        return (l == std::string_view::npos) ? std::string_view{} : s.substr(l, r - l + 1);
+                    };
+                    auto name = trim(pair.substr(0, eq));
+                    auto value = trim(pair.substr(eq + 1));
+                    if (!name.empty())
+                        req.cookies[std::string(name)] = std::string(value);
+                }
+                if (semi == std::string_view::npos)
+                    break;
+                start = semi + 1;
+            }
+        }
+        else
+        {
+            req.headers.insert_or_assign(key, hdr);
+        }
+    }
     return req;
 }
 

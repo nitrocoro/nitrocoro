@@ -73,7 +73,7 @@ Task<IncomingResponse> HttpClient::doRequest(ClientRequest req, io::StreamPtr st
     }
     {
         [[maybe_unused]] auto lock = co_await cookieMutex_.scoped_lock();
-        injectCookies(req, req.data_.path);
+        injectCookies(req, req.data().path);
     }
     co_await req.flush(Http1RequestSink(stream));
 
@@ -87,10 +87,10 @@ Task<IncomingResponse> HttpClient::doRequest(ClientRequest req, io::StreamPtr st
     auto & msg = std::get<HttpResponse>(result);
     {
         [[maybe_unused]] auto lock = co_await cookieMutex_.scoped_lock();
-        collectCookies(req.data_.path, msg.cookies);
+        collectCookies(req.data().path, msg.cookies);
     }
 
-    bool ignoreBody = req.data_.method == methods::Head;
+    bool ignoreBody = req.data().method == methods::Head;
     auto bodyReader = Http1BodyReader::create(stream, buffer, msg.transferMode, ignoreBody ? 0 : msg.contentLength);
     co_return IncomingResponse(std::move(msg), std::move(bodyReader));
 }

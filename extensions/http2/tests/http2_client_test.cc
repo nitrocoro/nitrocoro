@@ -6,6 +6,8 @@
  * for both h2c (plain TCP) and https (TLS + ALPN) transports.
  */
 #include <nitrocoro/http/HttpServer.h>
+#include <nitrocoro/http/Cookie.h>
+#include <nitrocoro/http/CookieStore.h>
 #include <nitrocoro/http2/Http2Client.h>
 #include <nitrocoro/http2/Http2Server.h>
 #include <nitrocoro/testing/Test.h>
@@ -318,6 +320,80 @@ NITRO_TEST(https_path_params)
 
     NITRO_CHECK_EQ(resp.statusCode(), 200);
     NITRO_CHECK_EQ(resp.body(), "99");
+
+    co_await server.stop();
+}
+
+// ── Cookie tests ────────────────────────────────────────────────────────────────────
+
+NITRO_TEST(h2c_server_set_cookie)
+{
+    HttpServer server(0);
+    enableHttp2(server);
+    server.route("/set", { "GET" }, [](auto req, auto resp) {
+        resp->addCookie(Cookie{ .name = "session", .value = "abc123", .path = "/" });
+        resp->setBody("ok");
+    });
+    startServer(server);
+    co_await server.started();
+
+    Http2Client client(h2cUrl(server.listeningPort()));
+    auto resp = co_await client.get("/set");
+
+    NITRO_CHECK_EQ(resp.statusCode(), 200);
+    NITRO_REQUIRE_EQ(resp.cookies().size(), 1);
+    NITRO_CHECK_EQ(resp.cookies()[0].name, "session");
+    NITRO_CHECK_EQ(resp.cookies()[0].value, "abc123");
+
+    co_await server.stop();
+}
+
+NITRO_TEST(h2c_cookie_store_and_send)
+{
+    HttpServer server(0);
+    enableHttp2(server);
+    server.route("/set", { "GET" }, [](auto req, auto resp) {
+        resp->addCookie(Cookie{ .name = "session", .value = "abc123", .path = "/" });
+        resp->setBody("ok");
+    });
+    server.route("/check", { "GET" }, [](auto req, auto resp) {
+        resp->setBody(req->getCookie("session"));
+    });
+    startServer(server);
+    co_await server.started();
+
+    Http2ClientConfig config;
+    config.cookieStoreFactory = memoryCookieStore();
+    Http2Client client(h2cUrl(server.listeningPort()), std::move(config));
+
+    co_await client.get("/set");
+    auto resp = co_await client.get("/check");
+
+    NITRO_CHECK_EQ(resp.statusCode(), 200);
+    NITRO_CHECK_EQ(resp.body(), "abc123");
+
+    co_await server.stop();
+}
+
+NITRO_TEST(h2c_no_cookie_store)
+{
+    HttpServer server(0);
+    enableHttp2(server);
+    server.route("/set", { "GET" }, [](auto req, auto resp) {
+        resp->addCookie(Cookie{ .name = "session", .value = "abc123", .path = "/" });
+        resp->setBody("ok");
+    });
+    server.route("/check", { "GET" }, [](auto req, auto resp) {
+        resp->setBody(req->getCookie("session"));
+    });
+    startServer(server);
+    co_await server.started();
+
+    Http2Client client(h2cUrl(server.listeningPort()));
+    co_await client.get("/set");
+    auto resp = co_await client.get("/check");
+
+    NITRO_CHECK_EQ(resp.body(), "");
 
     co_await server.stop();
 }

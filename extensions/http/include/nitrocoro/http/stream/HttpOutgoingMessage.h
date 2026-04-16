@@ -28,6 +28,8 @@ class HttpOutgoingMessageBase
 public:
     HttpOutgoingMessageBase() = default;
 
+    const DataType & data() const { return data_; }
+
     void setHeader(std::string_view name, std::string value);
     void setHeader(HttpHeader::NameCode code, std::string value);
     void setHeader(HttpHeader header);
@@ -56,8 +58,6 @@ template <>
 class HttpOutgoingMessage<HttpRequest>
     : public detail::HttpOutgoingMessageBase<HttpRequest>
 {
-    friend class HttpClient;
-
 public:
     HttpOutgoingMessage() = default;
 

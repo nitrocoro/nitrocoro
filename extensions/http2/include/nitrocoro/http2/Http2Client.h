@@ -7,7 +7,9 @@
 #include <nitrocoro/http/HttpClient.h>
 #include <nitrocoro/http/HttpStream.h>
 
+#include <nitrocoro/core/Mutex.h>
 #include <nitrocoro/core/Task.h>
+#include <nitrocoro/http/CookieStore.h>
 #include <nitrocoro/http/HttpMessage.h>
 #include <nitrocoro/io/Stream.h>
 #include <nitrocoro/net/Url.h>
@@ -34,6 +36,7 @@ struct Http2ClientConfig
     bool add_host_header = true;
     tls::TlsPolicy tls_policy;        // TLS configuration for HTTPS
     bool allow_http1_fallback = true; // Allow fallback to HTTP/1.1 if HTTP/2 not supported
+    http::CookieStoreFactory cookieStoreFactory = nullptr;
 };
 
 class Http2Client
@@ -57,6 +60,8 @@ private:
     Task<std::shared_ptr<Http2ClientSession>> getSession();
     Task<io::StreamPtr> connect();
     Task<ProtocolVersion> negotiateProtocol();
+    void injectCookies(http::ClientRequest & req, const std::string & path);
+    void collectCookies(const std::string & path, const std::vector<http::Cookie> & cookies);
 
     net::Url baseUrl_;
     Http2ClientConfig config_;
@@ -66,6 +71,8 @@ private:
     std::shared_ptr<Http2ClientSession> http2Session_;
     std::unique_ptr<http::HttpClient> http1Fallback_;
     std::string negotiatedAlpn_;
+    Mutex cookieMutex_;
+    std::unique_ptr<http::CookieStore> cookieStore_;
 };
 
 Task<http::HttpCompleteResponse> get(std::string url);
