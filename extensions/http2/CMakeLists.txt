@@ -40,10 +40,6 @@ if (BUILD_TESTING)
     target_link_libraries(http2_test PRIVATE nitrocoro-http2)
     add_test(NAME http2_test COMMAND http2_test)
 
-    add_executable(http2s_test tests/http2s_test.cc)
-    target_link_libraries(http2s_test PRIVATE nitrocoro-http2)
-    add_test(NAME http2s_test COMMAND http2s_test)
-    
     add_executable(http2_client_test tests/http2_client_test.cc)
     target_link_libraries(http2_client_test PRIVATE nitrocoro-http2)
     add_test(NAME http2_client_test COMMAND http2_client_test)

@@ -24,7 +24,7 @@ namespace nitrocoro::http2
 class Http2ClientSession : public std::enable_shared_from_this<Http2ClientSession>
 {
 public:
-    Http2ClientSession(io::StreamPtr stream, Scheduler * scheduler);
+    Http2ClientSession(io::StreamPtr stream, Scheduler * scheduler, std::string scheme = "https");
 
     Task<> run();
     Task<http::IncomingResponse> request(http::ClientRequest req);
@@ -63,6 +63,7 @@ private:
     bool headersOnly_{ false };
     std::vector<uint8_t> headerBlockBuf_;
 
+    std::string scheme_;
     uint32_t nextStreamId_{ 1 }; // Client uses odd stream IDs
     bool goAwaySent_{ false };
     bool settingsReceived_{ false };

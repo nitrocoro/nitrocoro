@@ -86,7 +86,7 @@ Task<std::shared_ptr<Http2ClientSession>> Http2Client::getSession()
     if (negotiatedProtocol_ != ProtocolVersion::Http2)
         throw std::runtime_error("HTTP/1.1 fallback not yet implemented");
 
-    http2Session_ = std::make_shared<Http2ClientSession>(std::move(stream), Scheduler::current());
+    http2Session_ = std::make_shared<Http2ClientSession>(std::move(stream), Scheduler::current(), baseUrl_.scheme());
 
     Scheduler::current()->spawn([session = http2Session_]() -> Task<> {
         try

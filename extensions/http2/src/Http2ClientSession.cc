@@ -19,9 +19,10 @@ namespace nitrocoro::http2
 
 // ── Http2ClientSession ────────────────────────────────────────────────────────
 
-Http2ClientSession::Http2ClientSession(io::StreamPtr stream, Scheduler * scheduler)
+Http2ClientSession::Http2ClientSession(io::StreamPtr stream, Scheduler * scheduler, std::string scheme)
     : reader_(std::move(stream))
     , scheduler_(scheduler)
+    , scheme_(std::move(scheme))
     , readyPromise_(scheduler)
     , readyFuture_(readyPromise_.get_future().share())
 {
@@ -309,7 +310,7 @@ Task<> Http2ClientSession::sendHeaders(uint32_t streamId, const http::HttpReques
 
     encodeLiteral(":method", req.method.toString());
     encodeLiteral(":path", req.path.empty() ? "/" : req.path);
-    encodeLiteral(":scheme", "https"); // set by caller via ALPN negotiation
+    encodeLiteral(":scheme", scheme_);
     for (const auto & [key, hdr] : req.headers)
     {
         if (hdr.nameCode() == http::HttpHeader::NameCode::Host)
