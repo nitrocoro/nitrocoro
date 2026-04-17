@@ -65,6 +65,7 @@ private:
 
     std::string scheme_;
     uint32_t nextStreamId_{ 1 }; // Client uses odd stream IDs
+    uint32_t maxFrameSize_{ 16384 };
     bool goAwaySent_{ false };
     bool settingsReceived_{ false };
     bool running_{ true };

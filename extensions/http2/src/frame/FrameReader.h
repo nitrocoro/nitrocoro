@@ -19,7 +19,7 @@ public:
     explicit FrameReader(io::StreamPtr stream) : stream_(std::move(stream)) {}
 
     // Read one complete frame. Returns nullopt on clean EOF.
-    Task<std::optional<Frame>> readFrame();
+    Task<std::optional<Frame>> readFrame(uint32_t maxFrameSize = 16384);
 
     // Write a frame to the stream (encodes header + payload).
     Task<> writeFrame(FrameType type, uint8_t flags, uint32_t streamId,

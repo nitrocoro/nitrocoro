@@ -55,11 +55,18 @@ Task<> Http2Session::run()
     // 3. Frame read loop
     while (!goAwaySent_)
     {
-        auto maybeFrame = co_await reader_.readFrame();
+        auto maybeFrame = co_await reader_.readFrame(maxFrameSize_);
         if (!maybeFrame)
             break;
 
         auto & frame = *maybeFrame;
+
+        // Frame size check
+        if (frame.header.length > maxFrameSize_)
+        {
+            co_await sendGoAway(lastStreamId_, ErrorCode::FrameSizeError);
+            break;
+        }
 
         // While collecting CONTINUATION, only CONTINUATION is allowed
         if (continuationStreamId_ != 0 && frame.header.type != FrameType::Continuation)
@@ -86,18 +93,79 @@ Task<> Http2Session::run()
                     co_await handleSettings(frame);
                     break;
                 case FrameType::WindowUpdate:
-                    break; // flow control not implemented
+                    if (frame.payload.size() != 4)
+                    {
+                        co_await sendGoAway(lastStreamId_, ErrorCode::FrameSizeError);
+                        frameError = true;
+                    }
+                    else if (frame.header.streamId != 0
+                             && !streams_.contains(frame.header.streamId))
+                    {
+                        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+                        frameError = true;
+                    }
+                    else if (frame.payload.size() == 4)
+                    {
+                        uint32_t inc = ((frame.payload[0] & 0x7f) << 24)
+                                       | (frame.payload[1] << 16)
+                                       | (frame.payload[2] << 8)
+                                       | frame.payload[3];
+                        if (inc == 0)
+                        {
+                            co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+                            frameError = true;
+                        }
+                    }
+                    break;
                 case FrameType::Ping:
                     co_await handlePing(frame);
                     break;
                 case FrameType::RstStream:
-                    streams_.erase(frame.header.streamId);
+                    if (frame.header.streamId == 0)
+                    {
+                        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+                        frameError = true;
+                    }
+                    else if (frame.payload.size() != 4)
+                    {
+                        co_await sendGoAway(lastStreamId_, ErrorCode::FrameSizeError);
+                        frameError = true;
+                    }
+                    else if (!streams_.contains(frame.header.streamId))
+                    {
+                        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+                        frameError = true;
+                    }
+                    else
+                    {
+                        streams_.erase(frame.header.streamId);
+                    }
                     break;
                 case FrameType::GoAway:
                     goAwaySent_ = true;
                     break;
                 case FrameType::Priority:
-                    break; // ignored
+                    if (frame.header.streamId == 0)
+                    {
+                        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+                        frameError = true;
+                    }
+                    else if (frame.payload.size() != 5)
+                    {
+                        co_await sendRstStream(frame.header.streamId, ErrorCode::FrameSizeError);
+                    }
+                    else
+                    {
+                        uint32_t dep = ((frame.payload[0] & 0x7f) << 24)
+                                       | (frame.payload[1] << 16)
+                                       | (frame.payload[2] << 8)
+                                       | frame.payload[3];
+                        if (dep == frame.header.streamId)
+                        {
+                            co_await sendRstStream(frame.header.streamId, ErrorCode::ProtocolError);
+                        }
+                    }
+                    break;
                 default:
                     break;
             }
@@ -123,6 +191,21 @@ Task<> Http2Session::handleHeaders(const Frame & frame)
         co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
         co_return;
     }
+    if (sid % 2 == 0)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+        co_return;
+    }
+    if (sid <= lastStreamId_ && !streams_.contains(sid))
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::StreamClosed);
+        co_return;
+    }
+    if (streams_.contains(sid))
+    {
+        co_await sendRstStream(sid, ErrorCode::StreamClosed);
+        co_return;
+    }
     lastStreamId_ = std::max(lastStreamId_, sid);
 
     const auto * payload = frame.payload.data();
@@ -133,8 +216,22 @@ Task<> Http2Session::handleHeaders(const Frame & frame)
     if (frame.header.flags & FrameFlags::Padded)
         padLen = payload[offset++];
     if (frame.header.flags & FrameFlags::Priority)
+    {
+        uint32_t dep = ((payload[offset] & 0x7f) << 24) | (payload[offset + 1] << 16)
+                       | (payload[offset + 2] << 8) | payload[offset + 3];
+        if (dep == sid)
+        {
+            co_await sendRstStream(sid, ErrorCode::ProtocolError);
+            co_return;
+        }
         offset += 5;
+    }
 
+    if (offset + padLen > payLen)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+        co_return;
+    }
     size_t blockLen = payLen - offset - padLen;
     headerBlockBuf_.assign(payload + offset, payload + offset + blockLen);
     continuationStreamId_ = sid;
@@ -180,6 +277,19 @@ Task<> Http2Session::finaliseHeaders()
     }
     headerBlockBuf_.clear();
 
+    // Check for connection-specific headers (RFC 7540 §8.1.2.2)
+    for (const auto & [key, hdr] : dh.headers)
+    {
+        if (hdr.nameCode() == http::HttpHeader::NameCode::Connection
+            || hdr.nameCode() == http::HttpHeader::NameCode::TransferEncoding
+            || hdr.name() == "keep-alive" || hdr.name() == "proxy-connection"
+            || hdr.name() == "upgrade")
+        {
+            co_await sendRstStream(sid, ErrorCode::ProtocolError);
+            co_return;
+        }
+    }
+
     NITRO_TRACE("creating Http2Stream sid=%u", sid);
     auto stream = std::make_shared<Http2Stream>(sid, scheduler_);
     stream->decodedHeaders = std::move(dh);
@@ -209,10 +319,18 @@ Task<> Http2Session::finaliseHeaders()
 Task<> Http2Session::handleData(const Frame & frame)
 {
     uint32_t sid = frame.header.streamId;
+    if (sid == 0)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+        co_return;
+    }
     auto it = streams_.find(sid);
     if (it == streams_.end())
     {
-        co_await sendRstStream(sid, ErrorCode::StreamClosed);
+        if (sid <= lastStreamId_)
+            co_await sendRstStream(sid, ErrorCode::StreamClosed);
+        else
+            co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
         co_return;
     }
 
@@ -225,9 +343,19 @@ Task<> Http2Session::handleData(const Frame & frame)
     if (frame.header.flags & FrameFlags::Padded)
         padLen = payload[offset++];
 
+    if (offset + padLen > payLen)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+        co_return;
+    }
     size_t dataLen = payLen - offset - padLen;
     if (dataLen > 0)
     {
+        if (!stream->bodySender)
+        {
+            co_await sendRstStream(sid, ErrorCode::StreamClosed);
+            co_return;
+        }
         stream->bodySender->send(
             std::string(reinterpret_cast<const char *>(payload + offset), dataLen));
 
@@ -248,17 +376,65 @@ Task<> Http2Session::handleData(const Frame & frame)
 
 Task<> Http2Session::handleSettings(const Frame & frame)
 {
-    if (frame.header.flags & FrameFlags::Ack)
+    if (frame.header.streamId != 0)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
         co_return;
-    // We accept all settings without applying them (flow control not implemented)
+    }
+    if (frame.header.flags & FrameFlags::Ack)
+    {
+        if (!frame.payload.empty())
+        {
+            co_await sendGoAway(lastStreamId_, ErrorCode::FrameSizeError);
+            co_return;
+        }
+        co_return;
+    }
+    if (frame.payload.size() % 6 != 0)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::FrameSizeError);
+        co_return;
+    }
+    // Parse and validate settings
+    for (size_t i = 0; i < frame.payload.size(); i += 6)
+    {
+        uint16_t id = (frame.payload[i] << 8) | frame.payload[i + 1];
+        uint32_t val = (frame.payload[i + 2] << 24) | (frame.payload[i + 3] << 16)
+                       | (frame.payload[i + 4] << 8) | frame.payload[i + 5];
+        if (id == 0x2 && val > 1)
+        {
+            co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+            co_return;
+        }
+        if (id == 0x4 && val > 0x7fffffff)
+        {
+            co_await sendGoAway(lastStreamId_, ErrorCode::FlowControlError);
+            co_return;
+        }
+        if (id == 0x5 && (val < 16384 || val > 16777215))
+        {
+            co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+            co_return;
+        }
+        if (id == SettingsParam::MaxFrameSize)
+            peerMaxFrameSize_ = val;
+    }
     co_await sendSettingsAck();
 }
 
 Task<> Http2Session::handlePing(const Frame & frame)
 {
-    if (frame.header.flags & FrameFlags::Ack)
+    if (frame.header.streamId != 0)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
         co_return;
+    }
     if (frame.payload.size() != 8)
+    {
+        co_await sendGoAway(lastStreamId_, ErrorCode::FrameSizeError);
+        co_return;
+    }
+    if (frame.header.flags & FrameFlags::Ack)
         co_return;
     auto lock = co_await writeMutex_.scoped_lock();
     co_await reader_.writeFrame(FrameType::Ping, FrameFlags::Ack, 0,

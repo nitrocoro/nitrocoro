@@ -61,6 +61,8 @@ private:
     std::vector<uint8_t> headerBlockBuf_;
 
     uint32_t lastStreamId_{ 0 };
+    uint32_t maxFrameSize_{ 16384 };
+    uint32_t peerMaxFrameSize_{ 16384 };
     bool goAwaySent_{ false };
 };
 

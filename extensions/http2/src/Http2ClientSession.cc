@@ -51,7 +51,7 @@ Task<> Http2ClientSession::run()
     // 3. Frame read loop
     while (!goAwaySent_)
     {
-        auto maybeFrame = co_await reader_.readFrame();
+        auto maybeFrame = co_await reader_.readFrame(maxFrameSize_);
         if (!maybeFrame)
             break;
 
