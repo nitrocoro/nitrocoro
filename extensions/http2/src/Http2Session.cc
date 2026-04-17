@@ -166,6 +166,10 @@ Task<> Http2Session::run()
                         }
                     }
                     break;
+                case FrameType::PushPromise:
+                    co_await sendGoAway(lastStreamId_, ErrorCode::ProtocolError);
+                    frameError = true;
+                    break;
                 default:
                     break;
             }
@@ -288,6 +292,27 @@ Task<> Http2Session::finaliseHeaders()
             co_await sendRstStream(sid, ErrorCode::ProtocolError);
             co_return;
         }
+        if (hdr.name() == "te" && hdr.value() != "trailers")
+        {
+            co_await sendRstStream(sid, ErrorCode::ProtocolError);
+            co_return;
+        }
+        // Uppercase header name check (RFC 7540 §8.1.2)
+        for (char c : hdr.name())
+        {
+            if (c >= 'A' && c <= 'Z')
+            {
+                co_await sendRstStream(sid, ErrorCode::ProtocolError);
+                co_return;
+            }
+        }
+    }
+
+    // Required pseudo-headers for requests (RFC 7540 §8.1.2.3)
+    if (dh.method.empty() || dh.path.empty() || dh.scheme.empty())
+    {
+        co_await sendRstStream(sid, ErrorCode::ProtocolError);
+        co_return;
     }
 
     NITRO_TRACE("creating Http2Stream sid=%u", sid);

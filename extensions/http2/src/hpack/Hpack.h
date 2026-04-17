@@ -37,7 +37,8 @@ public:
 private:
     uint64_t decodeInt(const uint8_t * data, size_t len, size_t & pos, uint8_t prefixBits);
     std::string decodeStr(const uint8_t * data, size_t len, size_t & pos);
-    void applyHeader(DecodedHeaders & out, std::string name, std::string value);
+    void applyHeader(DecodedHeaders & out, std::string name, std::string value,
+                      bool & seenRegularHeader);
 
     HpackTable table_;
 };

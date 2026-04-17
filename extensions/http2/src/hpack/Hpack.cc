@@ -81,20 +81,41 @@ std::string HpackDecoder::decodeStr(const uint8_t * data, size_t len, size_t & p
     return result;
 }
 
-void HpackDecoder::applyHeader(DecodedHeaders & out, std::string name, std::string value)
+void HpackDecoder::applyHeader(DecodedHeaders & out, std::string name, std::string value,
+                               bool & seenRegularHeader)
 {
-    if (name == ":method")
-        out.method = std::move(value);
-    else if (name == ":path")
-        out.path = std::move(value);
-    else if (name == ":scheme")
-        out.scheme = std::move(value);
-    else if (name == ":authority")
-        out.authority = std::move(value);
-    else if (name == ":status")
-        out.status = std::move(value);
+    if (!name.empty() && name[0] == ':')
+    {
+        if (seenRegularHeader)
+            throw std::runtime_error("HPACK: pseudo-header after regular header");
+        if (name == ":method")
+        {
+            if (!out.method.empty())
+                throw std::runtime_error("HPACK: duplicate :method");
+            out.method = std::move(value);
+        }
+        else if (name == ":path")
+        {
+            if (!out.path.empty())
+                throw std::runtime_error("HPACK: duplicate :path");
+            out.path = std::move(value);
+        }
+        else if (name == ":scheme")
+        {
+            if (!out.scheme.empty())
+                throw std::runtime_error("HPACK: duplicate :scheme");
+            out.scheme = std::move(value);
+        }
+        else if (name == ":authority")
+            out.authority = std::move(value);
+        else if (name == ":status")
+            throw std::runtime_error("HPACK: response pseudo-header in request");
+        else
+            throw std::runtime_error("HPACK: unknown pseudo-header");
+    }
     else
     {
+        seenRegularHeader = true;
         http::HttpHeader hdr(name, value);
         out.headers.insert_or_assign(hdr.name(), std::move(hdr));
     }
@@ -104,6 +125,7 @@ DecodedHeaders HpackDecoder::decode(const uint8_t * data, size_t len)
 {
     DecodedHeaders out;
     size_t pos = 0;
+    bool seenRegularHeader = false;
 
     while (pos < len)
     {
@@ -116,7 +138,7 @@ DecodedHeaders HpackDecoder::decode(const uint8_t * data, size_t len)
             if (idx == 0)
                 throw std::runtime_error("HPACK: index 0 is invalid");
             const auto & entry = table_.get(idx);
-            applyHeader(out, entry.name, entry.value);
+            applyHeader(out, entry.name, entry.value, seenRegularHeader);
         }
         else if ((first & 0xc0) == 0x40)
         {
@@ -129,12 +151,16 @@ DecodedHeaders HpackDecoder::decode(const uint8_t * data, size_t len)
                 name = table_.get(idx).name;
             value = decodeStr(data, len, pos);
             table_.insert(name, value);
-            applyHeader(out, std::move(name), std::move(value));
+            applyHeader(out, std::move(name), std::move(value), seenRegularHeader);
         }
         else if ((first & 0xe0) == 0x20)
         {
             // Dynamic Table Size Update (RFC 7541 §6.3)
+            if (seenRegularHeader || !out.method.empty())
+                throw std::runtime_error("HPACK: dynamic table size update not at beginning");
             uint64_t newSize = decodeInt(data, len, pos, 5);
+            if (newSize > table_.maxSize())
+                throw std::runtime_error("HPACK: dynamic table size update exceeds limit");
             table_.setMaxSize(newSize);
         }
         else
@@ -148,7 +174,7 @@ DecodedHeaders HpackDecoder::decode(const uint8_t * data, size_t len)
             else
                 name = table_.get(idx).name;
             value = decodeStr(data, len, pos);
-            applyHeader(out, std::move(name), std::move(value));
+            applyHeader(out, std::move(name), std::move(value), seenRegularHeader);
         }
     }
     return out;
